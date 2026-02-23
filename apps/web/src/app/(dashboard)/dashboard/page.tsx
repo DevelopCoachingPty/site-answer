@@ -1,4 +1,34 @@
+"use client";
+
+import { useApi } from "@/hooks/use-api";
+import { formatDuration } from "@/lib/utils";
+
+interface CallStats {
+  today: { total: number; answered: number; missed: number; escalated: number };
+  this_week: { leads_captured: number; appointments_booked: number };
+  average_duration_seconds: number;
+}
+
+interface Call {
+  id: string;
+  caller_name: string | null;
+  caller_number: string | null;
+  flow_type: string | null;
+  duration_seconds: number | null;
+  status: string;
+  summary: string | null;
+  started_at: string;
+}
+
+interface CallsResponse {
+  data: Call[];
+  total: number;
+}
+
 export default function DashboardPage() {
+  const { data: stats } = useApi<CallStats>("/calls/stats");
+  const { data: recentCalls } = useApi<CallsResponse>("/calls", { limit: 5 });
+
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
@@ -7,23 +37,29 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
         <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
           <p className="text-sm text-[var(--muted-foreground)]">Today&apos;s Calls</p>
-          <p className="mt-2 text-3xl font-bold">0</p>
-          <p className="mt-1 text-sm text-green-600">0 answered</p>
+          <p className="mt-2 text-3xl font-bold">{stats?.today?.total ?? 0}</p>
+          <p className="mt-1 text-sm text-green-600">
+            {stats?.today?.answered ?? 0} answered
+          </p>
         </div>
         <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
           <p className="text-sm text-[var(--muted-foreground)]">Leads This Week</p>
-          <p className="mt-2 text-3xl font-bold">0</p>
+          <p className="mt-2 text-3xl font-bold">
+            {stats?.this_week?.leads_captured ?? 0}
+          </p>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">new contacts</p>
         </div>
         <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
           <p className="text-sm text-[var(--muted-foreground)]">Avg. Duration</p>
-          <p className="mt-2 text-3xl font-bold">0:00</p>
+          <p className="mt-2 text-3xl font-bold">
+            {formatDuration(stats?.average_duration_seconds ?? 0)}
+          </p>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">minutes</p>
         </div>
         <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
-          <p className="text-sm text-[var(--muted-foreground)]">Escalations</p>
-          <p className="mt-2 text-3xl font-bold">0</p>
-          <p className="mt-1 text-sm text-[var(--muted-foreground)]">this week</p>
+          <p className="text-sm text-[var(--muted-foreground)]">Missed Calls</p>
+          <p className="mt-2 text-3xl font-bold">{stats?.today?.missed ?? 0}</p>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">today</p>
         </div>
       </div>
 
@@ -32,9 +68,46 @@ export default function DashboardPage() {
         <div className="border-b border-[var(--border)] px-6 py-4">
           <h2 className="font-semibold">Recent Calls</h2>
         </div>
-        <div className="p-6 text-center text-[var(--muted-foreground)]">
-          <p>No calls yet. Once SiteAnswer is active, your call history will appear here.</p>
-        </div>
+        {recentCalls?.data && recentCalls.data.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--border)]">
+                  <th className="px-6 py-3 text-left font-medium text-[var(--muted-foreground)]">Time</th>
+                  <th className="px-6 py-3 text-left font-medium text-[var(--muted-foreground)]">Caller</th>
+                  <th className="px-6 py-3 text-left font-medium text-[var(--muted-foreground)]">Type</th>
+                  <th className="px-6 py-3 text-left font-medium text-[var(--muted-foreground)]">Duration</th>
+                  <th className="px-6 py-3 text-left font-medium text-[var(--muted-foreground)]">Summary</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentCalls.data.map((call) => (
+                  <tr key={call.id} className="border-b border-[var(--border)] last:border-0">
+                    <td className="px-6 py-3 whitespace-nowrap">
+                      {new Date(call.started_at).toLocaleString()}
+                    </td>
+                    <td className="px-6 py-3">
+                      {call.caller_name ?? call.caller_number ?? "Unknown"}
+                    </td>
+                    <td className="px-6 py-3">
+                      <span className="rounded-full bg-[var(--muted)] px-2 py-0.5 text-xs">
+                        {call.flow_type?.replace(/_/g, " ") ?? "Unknown"}
+                      </span>
+                    </td>
+                    <td className="px-6 py-3">{formatDuration(call.duration_seconds ?? 0)}</td>
+                    <td className="px-6 py-3 max-w-xs truncate text-[var(--muted-foreground)]">
+                      {call.summary ?? "-"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="p-6 text-center text-[var(--muted-foreground)]">
+            <p>No calls yet. Once SiteAnswer is active, your call history will appear here.</p>
+          </div>
+        )}
       </div>
     </div>
   );
