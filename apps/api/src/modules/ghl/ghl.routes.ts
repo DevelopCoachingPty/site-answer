@@ -1,30 +1,49 @@
 import { FastifyPluginAsync } from "fastify";
-import { Type } from "@sinclair/typebox";
+import { Type, Static } from "@sinclair/typebox";
+import * as ghlClient from "./ghl.client.js";
+import { env } from "../../config/env.js";
+
+const CallbackQuery = Type.Object({
+  code: Type.String(),
+  state: Type.Optional(Type.String()),
+});
 
 const ghlRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /ghl/oauth/authorize - Start GHL OAuth flow
   fastify.get("/oauth/authorize", {
     preHandler: [fastify.authenticate, fastify.requireOrganisation],
     handler: async (request, reply) => {
-      // TODO: Redirect to GHL OAuth authorization URL
-      return reply.send({ message: "GHL OAuth not yet implemented" });
+      const url = ghlClient.getOAuthAuthorizeUrl(request.organisationId!);
+      return reply.redirect(url);
     },
   });
 
   // GET /ghl/oauth/callback - GHL OAuth callback
-  fastify.get("/oauth/callback", {
-    schema: {
-      querystring: Type.Object({
-        code: Type.String(),
-        state: Type.Optional(Type.String()),
-      }),
-    },
+  fastify.get<{ Querystring: Static<typeof CallbackQuery> }>("/oauth/callback", {
+    schema: { querystring: CallbackQuery },
     handler: async (request, reply) => {
-      // TODO:
-      // 1. Exchange authorization code for tokens
-      // 2. Encrypt and store tokens
-      // 3. Redirect back to settings page
-      return reply.send({ message: "GHL OAuth callback not yet implemented" });
+      const { code, state: orgId } = request.query;
+
+      if (!orgId) {
+        return reply.code(400).send({ error: "Missing state parameter" });
+      }
+
+      const tokens = await ghlClient.exchangeCodeForTokens(code);
+
+      // Store encrypted tokens and location ID
+      await ghlClient.storeTokens(orgId, tokens.access_token, tokens.refresh_token);
+
+      // Update location ID if returned
+      if (tokens.locationId) {
+        const { supabaseAdmin } = await import("../../lib/supabase.js");
+        await supabaseAdmin
+          .from("organisations")
+          .update({ ghl_location_id: tokens.locationId })
+          .eq("id", orgId);
+      }
+
+      // Redirect back to settings page
+      return reply.redirect(`${env.FRONTEND_URL}/dashboard/settings?ghl=connected`);
     },
   });
 
@@ -32,8 +51,8 @@ const ghlRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get("/status", {
     preHandler: [fastify.authenticate, fastify.requireOrganisation],
     handler: async (request, reply) => {
-      // TODO: Check if org has valid GHL tokens
-      return reply.send({ connected: false });
+      const connected = await ghlClient.checkConnection(request.organisationId!);
+      return reply.send({ connected });
     },
   });
 
@@ -41,8 +60,8 @@ const ghlRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.delete("/disconnect", {
     preHandler: [fastify.authenticate, fastify.requireOrganisation],
     handler: async (request, reply) => {
-      // TODO: Remove GHL tokens from organisation
-      return reply.send({ message: "GHL disconnected" });
+      await ghlClient.clearTokens(request.organisationId!);
+      return reply.send({ message: "GoHighLevel disconnected" });
     },
   });
 };

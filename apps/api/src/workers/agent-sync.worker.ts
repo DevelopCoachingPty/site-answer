@@ -6,29 +6,70 @@
  * this worker rebuilds the agent's system prompt and updates the
  * ElevenLabs agent configuration via API.
  *
- * Debounced: if multiple KB entries change in quick succession,
- * only the final sync runs.
+ * Uses job deduplication: if multiple changes happen quickly,
+ * only the latest sync runs.
  */
 
+import { Worker, type Job } from "bullmq";
 import { logger } from "../lib/logger.js";
+import { env } from "../config/env.js";
 import { QUEUE_NAMES } from "../config/constants.js";
+import * as elevenlabsClient from "../modules/elevenlabs/elevenlabs.client.js";
+import { supabaseAdmin } from "../lib/supabase.js";
 
 export interface AgentSyncJob {
   organisationId: string;
   trigger: "knowledge_base_updated" | "script_updated" | "settings_updated";
 }
 
-// TODO: Implement BullMQ worker
-// const worker = new Worker<AgentSyncJob>(QUEUE_NAMES.AGENT_SYNC, async (job) => {
-//   const log = logger.child({ jobId: job.id, orgId: job.data.organisationId });
-//   log.info({ trigger: job.data.trigger }, "Syncing agent configuration");
-//
-//   // 1. Fetch organisation, knowledge base, and active scripts
-//   // 2. Build dynamic system prompt
-//   // 3. Update ElevenLabs agent via API
-// }, {
-//   // Debounce: only process the latest job per org
-//   settings: { backoffStrategy: () => 5000 },
-// });
+async function processAgentSync(job: Job<AgentSyncJob>) {
+  const log = logger.child({ jobId: job.id, orgId: job.data.organisationId });
+  log.info({ trigger: job.data.trigger }, "Syncing agent configuration");
 
-export default {};
+  const { organisationId } = job.data;
+
+  // Get org's ElevenLabs agent ID
+  const { data: org } = await supabaseAdmin
+    .from("organisations")
+    .select("elevenlabs_agent_id, name")
+    .eq("id", organisationId)
+    .single();
+
+  if (!org) {
+    log.warn("Organisation not found");
+    return;
+  }
+
+  if (!org.elevenlabs_agent_id) {
+    // Agent not provisioned yet - provision it
+    log.info("No agent found, provisioning new agent");
+    await elevenlabsClient.provisionAgent(organisationId);
+    return;
+  }
+
+  // Update the agent's prompt with latest KB + scripts
+  await elevenlabsClient.updateAgentPrompt(org.elevenlabs_agent_id, organisationId);
+
+  log.info({ agentId: org.elevenlabs_agent_id }, "Agent prompt updated");
+}
+
+export function startAgentSyncWorker() {
+  const worker = new Worker<AgentSyncJob>(
+    QUEUE_NAMES.AGENT_SYNC,
+    processAgentSync,
+    {
+      connection: { url: env.REDIS_URL },
+      concurrency: 2,
+    },
+  );
+
+  worker.on("completed", (job) => {
+    logger.info({ jobId: job.id }, "Agent sync job completed");
+  });
+
+  worker.on("failed", (job, err) => {
+    logger.error({ jobId: job?.id, err }, "Agent sync job failed");
+  });
+
+  return worker;
+}

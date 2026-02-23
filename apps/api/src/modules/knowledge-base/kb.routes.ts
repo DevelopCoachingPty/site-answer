@@ -1,6 +1,9 @@
 import { FastifyPluginAsync } from "fastify";
 import { Type, Static } from "@sinclair/typebox";
 import * as kbService from "./kb.service.js";
+import { getQueue } from "../../lib/queue.js";
+import { QUEUE_NAMES } from "../../config/constants.js";
+import { logger } from "../../lib/logger.js";
 
 const CreateKbBody = Type.Object({
   category: Type.String(),
@@ -18,6 +21,24 @@ const UpdateKbBody = Type.Object({
 });
 
 const IdParams = Type.Object({ id: Type.String({ format: "uuid" }) });
+
+async function queueAgentSync(orgId: string) {
+  try {
+    const queue = getQueue(QUEUE_NAMES.AGENT_SYNC);
+    await queue.add(
+      "sync",
+      { organisationId: orgId, trigger: "knowledge_base_updated" },
+      {
+        jobId: `agent-sync-${orgId}`, // Deduplicates rapid changes
+        attempts: 3,
+        backoff: { type: "exponential", delay: 5000 },
+        delay: 2000, // Wait 2s for batch changes
+      },
+    );
+  } catch (err) {
+    logger.warn({ err, orgId }, "Failed to queue agent sync (Redis may be unavailable)");
+  }
+}
 
 const kbRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook("preHandler", fastify.authenticate);
@@ -45,7 +66,7 @@ const kbRoutes: FastifyPluginAsync = async (fastify) => {
         request.organisationId!,
         request.body,
       );
-      // TODO: Queue agent sync to update ElevenLabs agent prompt
+      await queueAgentSync(request.organisationId!);
       return reply.code(201).send({ data: entry });
     },
   });
@@ -59,7 +80,7 @@ const kbRoutes: FastifyPluginAsync = async (fastify) => {
         request.params.id,
         request.body,
       );
-      // TODO: Queue agent sync
+      await queueAgentSync(request.organisationId!);
       return reply.send({ data: entry });
     },
   });
@@ -72,7 +93,7 @@ const kbRoutes: FastifyPluginAsync = async (fastify) => {
         request.organisationId!,
         request.params.id,
       );
-      // TODO: Queue agent sync
+      await queueAgentSync(request.organisationId!);
       return reply.code(204).send();
     },
   });

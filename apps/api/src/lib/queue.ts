@@ -47,6 +47,17 @@ export function getAgentSyncQueue(): Queue {
   return _agentSyncQueue;
 }
 
+const _queues = new Map<string, Queue>();
+
+export function getQueue(name: string): Queue {
+  let queue = _queues.get(name);
+  if (!queue) {
+    queue = createQueue(name);
+    _queues.set(name, queue);
+  }
+  return queue;
+}
+
 export async function closeQueues(): Promise<void> {
   const queues = [_postCallQueue, _ghlSyncQueue, _agentSyncQueue].filter(Boolean);
   await Promise.all(queues.map((q) => q!.close()));

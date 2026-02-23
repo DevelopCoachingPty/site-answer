@@ -1,6 +1,9 @@
 import { FastifyPluginAsync } from "fastify";
 import { Type, Static } from "@sinclair/typebox";
 import * as scriptsService from "./scripts.service.js";
+import { getQueue } from "../../lib/queue.js";
+import { QUEUE_NAMES } from "../../config/constants.js";
+import { logger } from "../../lib/logger.js";
 
 const IdParams = Type.Object({ id: Type.String({ format: "uuid" }) });
 
@@ -42,7 +45,22 @@ const scriptRoutes: FastifyPluginAsync = async (fastify) => {
         request.params.id,
         request.body,
       );
-      // TODO: Queue agent sync to update ElevenLabs agent prompt
+      // Queue agent sync to update ElevenLabs agent prompt
+      try {
+        const queue = getQueue(QUEUE_NAMES.AGENT_SYNC);
+        await queue.add(
+          "sync",
+          { organisationId: request.organisationId!, trigger: "script_updated" },
+          {
+            jobId: `agent-sync-${request.organisationId!}`,
+            attempts: 3,
+            backoff: { type: "exponential", delay: 5000 },
+            delay: 2000,
+          },
+        );
+      } catch (err) {
+        logger.warn({ err }, "Failed to queue agent sync");
+      }
       return reply.send({ data: script });
     },
   });
