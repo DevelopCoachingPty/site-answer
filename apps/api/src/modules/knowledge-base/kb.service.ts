@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "../../lib/supabase.js";
-import { NotFoundError } from "../../lib/errors.js";
+import { NotFoundError, ExternalServiceError } from "../../lib/errors.js";
 
 export async function listKnowledgeBase(orgId: string, category?: string) {
   let query = supabaseAdmin
@@ -16,7 +16,7 @@ export async function listKnowledgeBase(orgId: string, category?: string) {
   const { data, error } = await query;
 
   if (error) {
-    throw new Error(`Failed to list knowledge base: ${error.message}`);
+    throw new ExternalServiceError("Database", `Failed to list knowledge base: ${error.message}`);
   }
 
   return data ?? [];
@@ -56,7 +56,7 @@ export async function createKnowledgeBaseEntry(orgId: string, input: {
     .single();
 
   if (error) {
-    throw new Error(`Failed to create KB entry: ${error.message}`);
+    throw new ExternalServiceError("Database", `Failed to create KB entry: ${error.message}`);
   }
 
   return data;
@@ -90,7 +90,7 @@ export async function deleteKnowledgeBaseEntry(orgId: string, entryId: string) {
     .eq("organisation_id", orgId);
 
   if (error) {
-    throw new Error(`Failed to delete KB entry: ${error.message}`);
+    throw new ExternalServiceError("Database", `Failed to delete KB entry: ${error.message}`);
   }
 }
 

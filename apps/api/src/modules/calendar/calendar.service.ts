@@ -165,7 +165,7 @@ export async function bookAppointment(orgId: string, input: {
     .single();
 
   if (error) {
-    throw new Error(`Failed to save appointment: ${error.message}`);
+    throw new ExternalServiceError("Database", `Failed to save appointment: ${error.message}`);
   }
 
   return appointment;

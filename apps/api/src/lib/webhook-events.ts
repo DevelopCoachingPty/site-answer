@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "./supabase.js";
 import { logger } from "./logger.js";
+import { ExternalServiceError } from "./errors.js";
 
 /**
  * Check if a webhook event has already been processed (idempotency).
@@ -29,7 +30,7 @@ export async function claimWebhookEvent(
       logger.info({ source, eventId }, "Duplicate webhook event, skipping");
       return false;
     }
-    throw new Error(`Failed to claim webhook event: ${error.message}`);
+    throw new ExternalServiceError("Database", `Failed to claim webhook event: ${error.message}`);
   }
 
   return !!data;

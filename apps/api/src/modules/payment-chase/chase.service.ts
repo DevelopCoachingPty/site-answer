@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "../../lib/supabase.js";
-import { NotFoundError } from "../../lib/errors.js";
+import { NotFoundError, ExternalServiceError } from "../../lib/errors.js";
 
 interface ChaseFilters {
   page: number;
@@ -39,7 +39,7 @@ export async function listChaseItems(orgId: string, filters: ChaseFilters) {
     .range(from, to);
 
   if (error) {
-    throw new Error(`Failed to list chase items: ${error.message}`);
+    throw new ExternalServiceError("Database", `Failed to list chase items: ${error.message}`);
   }
 
   return {
@@ -111,7 +111,7 @@ export async function createChaseItem(orgId: string, input: {
     .single();
 
   if (error) {
-    throw new Error(`Failed to create chase item: ${error.message}`);
+    throw new ExternalServiceError("Database", `Failed to create chase item: ${error.message}`);
   }
 
   return data;
@@ -156,7 +156,7 @@ export async function bulkCreateChaseItems(orgId: string, items: Array<{
     .select();
 
   if (error) {
-    throw new Error(`Failed to bulk create chase items: ${error.message}`);
+    throw new ExternalServiceError("Database", `Failed to bulk create chase items: ${error.message}`);
   }
 
   return data ?? [];
@@ -189,7 +189,7 @@ export async function updateChaseItem(orgId: string, itemId: string, updates: {
     .single();
 
   if (error) {
-    throw new Error(`Failed to update chase item: ${error.message}`);
+    throw new ExternalServiceError("Database", `Failed to update chase item: ${error.message}`);
   }
 
   return data;
@@ -203,7 +203,7 @@ export async function deleteChaseItem(orgId: string, itemId: string) {
     .eq("organisation_id", orgId);
 
   if (error) {
-    throw new Error(`Failed to delete chase item: ${error.message}`);
+    throw new ExternalServiceError("Database", `Failed to delete chase item: ${error.message}`);
   }
 }
 
@@ -218,7 +218,7 @@ export async function getItemsDueForChasing() {
     .order("next_chase_at", { ascending: true });
 
   if (error) {
-    throw new Error(`Failed to get items due for chasing: ${error.message}`);
+    throw new ExternalServiceError("Database", `Failed to get items due for chasing: ${error.message}`);
   }
 
   // Filter out items that have reached their max chase count
@@ -235,7 +235,7 @@ export async function getChaseStats(orgId: string) {
     .eq("organisation_id", orgId);
 
   if (error) {
-    throw new Error(`Failed to get chase stats: ${error.message}`);
+    throw new ExternalServiceError("Database", `Failed to get chase stats: ${error.message}`);
   }
 
   const all = items ?? [];
@@ -296,6 +296,6 @@ export async function recordChaseAttempt(
     .eq("id", itemId);
 
   if (error) {
-    throw new Error(`Failed to record chase attempt: ${error.message}`);
+    throw new ExternalServiceError("Database", `Failed to record chase attempt: ${error.message}`);
   }
 }

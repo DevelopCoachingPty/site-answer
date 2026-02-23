@@ -6,6 +6,7 @@
 
 import { supabaseAdmin } from "../../lib/supabase.js";
 import { env } from "../../config/env.js";
+import { ExternalServiceError } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "../../config/constants.js";
 
@@ -18,7 +19,7 @@ async function twilioFetch(orgId: string, path: string, body: Record<string, str
   const authToken = env.TWILIO_AUTH_TOKEN;
 
   if (!accountSid || !authToken) {
-    throw new Error("Twilio credentials not configured");
+    throw new ExternalServiceError("Twilio", "Credentials not configured");
   }
 
   const response = await fetch(`${TWILIO_API}/Accounts/${accountSid}${path}`, {
@@ -33,7 +34,7 @@ async function twilioFetch(orgId: string, path: string, body: Record<string, str
   if (!response.ok) {
     const text = await response.text();
     logger.error({ orgId, status: response.status, body: text }, "Twilio WhatsApp API error");
-    throw new Error(`Twilio error (${response.status}): ${text}`);
+    throw new ExternalServiceError("Twilio", `API error (${response.status}): ${text}`);
   }
 
   return response.json();
@@ -48,7 +49,7 @@ export async function listTemplates(orgId: string) {
     .eq("organisation_id", orgId)
     .order("template_type");
 
-  if (error) throw error;
+  if (error) throw new ExternalServiceError("Database", `Failed to list templates: ${error.message}`);
   return data ?? [];
 }
 
@@ -60,7 +61,7 @@ export async function getTemplate(orgId: string, templateId: string) {
     .eq("id", templateId)
     .single();
 
-  if (error) throw error;
+  if (error) throw new ExternalServiceError("Database", `Failed to get template: ${error.message}`);
   return data;
 }
 
@@ -85,7 +86,7 @@ export async function upsertTemplate(
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) throw new ExternalServiceError("Database", `Failed to upsert template: ${error.message}`);
   return data;
 }
 
@@ -96,7 +97,7 @@ export async function deleteTemplate(orgId: string, templateId: string) {
     .eq("organisation_id", orgId)
     .eq("id", templateId);
 
-  if (error) throw error;
+  if (error) throw new ExternalServiceError("Database", `Failed to delete template: ${error.message}`);
 }
 
 // --- Sending Messages ---
@@ -164,7 +165,7 @@ export async function sendMessage(
     .select()
     .single();
 
-  if (insertError) throw insertError;
+  if (insertError) throw new ExternalServiceError("Database", `Failed to create message: ${insertError.message}`);
 
   // Send via Twilio
   try {
@@ -219,7 +220,7 @@ export async function listMessages(
   }
 
   const { data, count, error } = await query;
-  if (error) throw error;
+  if (error) throw new ExternalServiceError("Database", `Failed to list messages: ${error.message}`);
 
   return { data: data ?? [], total: count ?? 0, page, limit };
 }

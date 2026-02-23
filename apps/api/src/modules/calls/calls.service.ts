@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "../../lib/supabase.js";
-import { NotFoundError } from "../../lib/errors.js";
+import { NotFoundError, ExternalServiceError } from "../../lib/errors.js";
 
 interface CallFilters {
   page: number;
@@ -43,7 +43,7 @@ export async function listCalls(orgId: string, filters: CallFilters) {
     .range(from, to);
 
   if (error) {
-    throw new Error(`Failed to list calls: ${error.message}`);
+    throw new ExternalServiceError("Database", `Failed to list calls: ${error.message}`);
   }
 
   return {
@@ -99,7 +99,7 @@ export async function createCall(input: {
     .single();
 
   if (error) {
-    throw new Error(`Failed to create call: ${error.message}`);
+    throw new ExternalServiceError("Database", `Failed to create call: ${error.message}`);
   }
 
   return data;
@@ -114,7 +114,7 @@ export async function updateCall(callId: string, updates: Record<string, unknown
     .single();
 
   if (error) {
-    throw new Error(`Failed to update call: ${error.message}`);
+    throw new ExternalServiceError("Database", `Failed to update call: ${error.message}`);
   }
 
   return data;
@@ -189,7 +189,7 @@ export async function createCallAction(input: {
     .single();
 
   if (error) {
-    throw new Error(`Failed to create call action: ${error.message}`);
+    throw new ExternalServiceError("Database", `Failed to create call action: ${error.message}`);
   }
 
   return data;

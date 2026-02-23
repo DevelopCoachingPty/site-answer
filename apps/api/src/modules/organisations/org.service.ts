@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "../../lib/supabase.js";
-import { NotFoundError } from "../../lib/errors.js";
+import { NotFoundError, ExternalServiceError } from "../../lib/errors.js";
 
 export async function getOrganisation(orgId: string) {
   const { data, error } = await supabaseAdmin
@@ -31,7 +31,7 @@ export async function updateOrganisation(orgId: string, updates: Record<string, 
     .single();
 
   if (error) {
-    throw new Error(`Failed to update organisation: ${error.message}`);
+    throw new ExternalServiceError("Database", `Failed to update organisation: ${error.message}`);
   }
 
   return data;
@@ -78,7 +78,7 @@ export async function listOrganisations(page: number, limit: number, status?: st
     .range(from, to);
 
   if (error) {
-    throw new Error(`Failed to list organisations: ${error.message}`);
+    throw new ExternalServiceError("Database", `Failed to list organisations: ${error.message}`);
   }
 
   return {
@@ -116,7 +116,7 @@ export async function createOrganisation(input: {
     .single();
 
   if (error) {
-    throw new Error(`Failed to create organisation: ${error.message}`);
+    throw new ExternalServiceError("Database", `Failed to create organisation: ${error.message}`);
   }
 
   return data;
