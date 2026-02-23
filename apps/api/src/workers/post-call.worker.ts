@@ -16,6 +16,7 @@ import { QUEUE_NAMES } from "../config/constants.js";
 import * as callsService from "../modules/calls/calls.service.js";
 import * as usageService from "../modules/usage/usage.service.js";
 import * as orgService from "../modules/organisations/org.service.js";
+import * as whatsappService from "../modules/whatsapp/whatsapp.service.js";
 import { getQueue } from "../lib/queue.js";
 
 export interface PostCallJob {
@@ -127,7 +128,47 @@ async function processPostCall(job: Job<PostCallJob>) {
     appointments: bookedAppointment ? 1 : 0,
   });
 
+  // 5. Send WhatsApp confirmation if enabled
+  try {
+    const { data: orgDetails } = await supabaseAdmin
+      .from("organisations")
+      .select("whatsapp_enabled, name")
+      .eq("id", org.id)
+      .single();
+
+    if (orgDetails?.whatsapp_enabled) {
+      const callerNumber = await getCallerNumber(call.id);
+      if (callerNumber) {
+        if (bookedAppointment) {
+          const appointmentAction = tool_calls?.find((tc) => tc.tool_name === "book_appointment");
+          await whatsappService.sendTemplateMessage(org.id, callerNumber, "booking_confirmation", {
+            company_name: orgDetails.name ?? "our team",
+            datetime: (appointmentAction?.result as Record<string, string>)?.message ?? "as discussed",
+            contact_name: (appointmentAction?.parameters as Record<string, string>)?.contact_id ?? "there",
+          }, call.id);
+        } else {
+          await whatsappService.sendTemplateMessage(org.id, callerNumber, "inquiry_summary", {
+            company_name: orgDetails.name ?? "our team",
+            contact_name: "there",
+          }, call.id);
+        }
+      }
+    }
+  } catch (err) {
+    log.warn({ err }, "WhatsApp post-call message failed (non-critical)");
+  }
+
   log.info({ callId: call.id, orgId: org.id }, "Post-call processing complete");
+}
+
+async function getCallerNumber(callId: string): Promise<string | null> {
+  const { supabaseAdmin } = await import("../lib/supabase.js");
+  const { data } = await supabaseAdmin
+    .from("calls")
+    .select("caller_number")
+    .eq("id", callId)
+    .single();
+  return data?.caller_number ?? null;
 }
 
 export function startPostCallWorker() {

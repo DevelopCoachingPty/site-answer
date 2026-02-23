@@ -43,6 +43,8 @@ export default function SettingsPage() {
     escalation_phone: "",
     escalation_sms: true,
     after_hours_action: "voicemail",
+    whatsapp_enabled: false,
+    whatsapp_phone_number: "",
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -59,6 +61,8 @@ export default function SettingsPage() {
         escalation_phone: org.escalation_phone ?? "",
         escalation_sms: org.escalation_sms ?? true,
         after_hours_action: org.after_hours_action ?? "voicemail",
+        whatsapp_enabled: (org as unknown as Record<string, unknown>).whatsapp_enabled as boolean ?? false,
+        whatsapp_phone_number: (org as unknown as Record<string, unknown>).whatsapp_phone_number as string ?? "",
       });
     }
   }, [data]);
@@ -200,6 +204,38 @@ export default function SettingsPage() {
               <label htmlFor="escalation_sms" className="text-sm">
                 Send SMS for escalations
               </label>
+            </div>
+          </div>
+        </section>
+
+        {/* WhatsApp */}
+        <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
+          <h2 className="font-semibold mb-4">WhatsApp</h2>
+          <p className="text-sm text-[var(--muted-foreground)] mb-4">
+            Send post-call confirmations and reminders via WhatsApp.
+          </p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="flex items-center gap-2 pt-2">
+              <input
+                type="checkbox"
+                id="whatsapp_enabled"
+                checked={form.whatsapp_enabled}
+                onChange={(e) => setForm({ ...form, whatsapp_enabled: e.target.checked })}
+              />
+              <label htmlFor="whatsapp_enabled" className="text-sm">
+                Enable WhatsApp messages
+              </label>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">WhatsApp Phone Number</label>
+              <input
+                type="tel"
+                value={form.whatsapp_phone_number}
+                onChange={(e) => setForm({ ...form, whatsapp_phone_number: e.target.value })}
+                className="w-full rounded-lg border border-[var(--input)] bg-[var(--background)] px-3 py-2 text-sm"
+                placeholder="+61 4XX XXX XXX"
+                disabled={!form.whatsapp_enabled}
+              />
             </div>
           </div>
         </section>

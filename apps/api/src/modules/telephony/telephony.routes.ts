@@ -6,6 +6,7 @@ import * as orgService from "../organisations/org.service.js";
 import * as callsService from "../calls/calls.service.js";
 import * as ghlClient from "../ghl/ghl.client.js";
 import * as scriptsService from "../scripts/scripts.service.js";
+import * as whatsappService from "../whatsapp/whatsapp.service.js";
 import { supabaseAdmin } from "../../lib/supabase.js";
 
 const IncomingCallBody = Type.Object({
@@ -273,6 +274,23 @@ const telephonyRoutes: FastifyPluginAsync = async (fastify) => {
 
       return reply.send({ status: "received" });
     },
+  });
+  // POST /webhooks/telephony/whatsapp-status - WhatsApp message status
+  fastify.post("/whatsapp-status", async (request, reply) => {
+    const payload = request.body as Record<string, string>;
+    const messageSid = payload.MessageSid;
+    const messageStatus = payload.MessageStatus;
+
+    if (messageSid && messageStatus) {
+      logger.info({ messageSid, status: messageStatus }, "WhatsApp status update");
+      await whatsappService.updateMessageStatus(
+        messageSid,
+        messageStatus,
+        payload.ErrorMessage,
+      );
+    }
+
+    return reply.send({ status: "received" });
   });
 };
 

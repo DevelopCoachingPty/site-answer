@@ -7,6 +7,7 @@ import * as ghlClient from "../ghl/ghl.client.js";
 import * as callsService from "../calls/calls.service.js";
 import * as chaseService from "../payment-chase/chase.service.js";
 import * as calendarService from "../calendar/calendar.service.js";
+import * as whatsappService from "../whatsapp/whatsapp.service.js";
 import { supabaseAdmin } from "../../lib/supabase.js";
 import { getQueue } from "../../lib/queue.js";
 import { QUEUE_NAMES } from "../../config/constants.js";
@@ -93,6 +94,19 @@ const LogMessageBody = Type.Intersect([
       phone: Type.String(),
       message: Type.String(),
       callback_requested: Type.Optional(Type.Boolean()),
+    }),
+  }),
+]);
+
+const SendWhatsAppBody = Type.Intersect([
+  ToolCallBase,
+  Type.Object({
+    parameters: Type.Object({
+      phone_number: Type.String(),
+      template_type: Type.String(),
+      contact_name: Type.Optional(Type.String()),
+      datetime: Type.Optional(Type.String()),
+      notes: Type.Optional(Type.String()),
     }),
   }),
 ]);
@@ -404,6 +418,45 @@ const elevenlabsRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       return reply.send({ success: true });
+    },
+  });
+
+  // Tool: send_whatsapp
+  fastify.post<{ Body: Static<typeof SendWhatsAppBody> }>("/tools/send_whatsapp", {
+    schema: { body: SendWhatsAppBody },
+    handler: async (request, reply) => {
+      const { agent_id, parameters } = request.body;
+      logger.info({ agentId: agent_id, templateType: parameters.template_type }, "Tool: send_whatsapp");
+
+      const org = await getOrgFromAgent(agent_id);
+      if (!org) {
+        return reply.send({ success: false, reason: "Organisation not found" });
+      }
+
+      try {
+        const { data: orgDetails } = await supabaseAdmin
+          .from("organisations")
+          .select("name")
+          .eq("id", org.id)
+          .single();
+
+        const result = await whatsappService.sendTemplateMessage(
+          org.id,
+          parameters.phone_number,
+          parameters.template_type,
+          {
+            contact_name: parameters.contact_name ?? "there",
+            company_name: orgDetails?.name ?? "our team",
+            datetime: parameters.datetime ?? "",
+            notes: parameters.notes ?? "",
+          },
+        );
+
+        return reply.send({ success: !!result, message_id: result?.id ?? null });
+      } catch (err) {
+        logger.error({ err, orgId: org.id }, "Failed to send WhatsApp");
+        return reply.send({ success: false, reason: "Failed to send message" });
+      }
     },
   });
 

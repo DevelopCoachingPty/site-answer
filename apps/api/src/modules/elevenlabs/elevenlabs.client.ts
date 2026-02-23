@@ -169,6 +169,7 @@ You have access to these tools to help callers:
 - **escalate_to_builder**: Immediately escalate to the builder (urgent/emergency)
 - **get_knowledge**: Search the knowledge base for specific information
 - **log_message**: Log a message for callback
+- **send_whatsapp**: Send a WhatsApp confirmation message to the caller
 
 # EMERGENCY KEYWORDS
 If the caller mentions: flood, leak, collapse, fire, structural, dangerous, urgent, emergency, gas, electric
@@ -304,6 +305,23 @@ function buildToolConfigs(baseUrl: string) {
           callback_requested: { type: "boolean", description: "Whether the caller requested a callback" },
         },
         required: ["caller_name", "phone", "message"],
+      },
+    },
+    {
+      type: "webhook",
+      name: "send_whatsapp",
+      description: "Send a WhatsApp confirmation message to the caller (booking confirmation, inquiry summary, etc.)",
+      webhook: { url: `${baseUrl}/tools/send_whatsapp`, method: "POST" },
+      parameters: {
+        type: "object",
+        properties: {
+          phone_number: { type: "string", description: "Phone number to send WhatsApp to" },
+          template_type: { type: "string", description: "Template type: booking_confirmation, inquiry_summary, payment_reminder" },
+          contact_name: { type: "string", description: "Contact's name" },
+          datetime: { type: "string", description: "Appointment date/time if booking" },
+          notes: { type: "string", description: "Additional notes" },
+        },
+        required: ["phone_number", "template_type"],
       },
     },
     {

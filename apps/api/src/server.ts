@@ -22,6 +22,7 @@ import chaseRoutes from "./modules/payment-chase/chase.routes.js";
 import accountingRoutes from "./modules/accounting/accounting.routes.js";
 import calendarRoutes from "./modules/calendar/calendar.routes.js";
 import analyticsRoutes from "./modules/analytics/analytics.routes.js";
+import whatsappRoutes from "./modules/whatsapp/whatsapp.routes.js";
 
 export async function buildServer() {
   const app = Fastify({
@@ -68,6 +69,7 @@ export async function buildServer() {
   await app.register(accountingRoutes, { prefix: `${API_PREFIX}/accounting` });
   await app.register(calendarRoutes, { prefix: `${API_PREFIX}/calendar` });
   await app.register(analyticsRoutes, { prefix: `${API_PREFIX}/analytics` });
+  await app.register(whatsappRoutes, { prefix: `${API_PREFIX}/whatsapp` });
 
   // Webhook routes (signature verification, no JWT auth)
   await app.register(telephonyRoutes, { prefix: `${API_PREFIX}/webhooks/telephony` });

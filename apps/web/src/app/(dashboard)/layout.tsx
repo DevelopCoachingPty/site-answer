@@ -11,6 +11,7 @@ const navItems = [
   { href: "/dashboard/knowledge-base", label: "Knowledge Base" },
   { href: "/dashboard/scripts", label: "Scripts" },
   { href: "/dashboard/analytics", label: "Analytics" },
+  { href: "/dashboard/whatsapp", label: "WhatsApp" },
   { href: "/dashboard/settings", label: "Settings" },
 ];
 
