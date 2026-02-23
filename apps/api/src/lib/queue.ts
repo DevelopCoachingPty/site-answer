@@ -32,6 +32,7 @@ let _postCallQueue: Queue | null = null;
 let _ghlSyncQueue: Queue | null = null;
 let _agentSyncQueue: Queue | null = null;
 let _paymentChaseQueue: Queue | null = null;
+let _invoiceSyncQueue: Queue | null = null;
 
 export function getPostCallQueue(): Queue {
   if (!_postCallQueue) _postCallQueue = createQueue(QUEUE_NAMES.POST_CALL);
@@ -53,6 +54,11 @@ export function getPaymentChaseQueue(): Queue {
   return _paymentChaseQueue;
 }
 
+export function getInvoiceSyncQueue(): Queue {
+  if (!_invoiceSyncQueue) _invoiceSyncQueue = createQueue(QUEUE_NAMES.INVOICE_SYNC);
+  return _invoiceSyncQueue;
+}
+
 const _queues = new Map<string, Queue>();
 
 export function getQueue(name: string): Queue {
@@ -65,10 +71,11 @@ export function getQueue(name: string): Queue {
 }
 
 export async function closeQueues(): Promise<void> {
-  const queues = [_postCallQueue, _ghlSyncQueue, _agentSyncQueue, _paymentChaseQueue].filter(Boolean);
+  const queues = [_postCallQueue, _ghlSyncQueue, _agentSyncQueue, _paymentChaseQueue, _invoiceSyncQueue].filter(Boolean);
   await Promise.all(queues.map((q) => q!.close()));
   _postCallQueue = null;
   _ghlSyncQueue = null;
   _agentSyncQueue = null;
   _paymentChaseQueue = null;
+  _invoiceSyncQueue = null;
 }

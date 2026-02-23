@@ -24,6 +24,16 @@ const envSchema = z.object({
   GHL_CLIENT_SECRET: z.string().optional(),
   GHL_REDIRECT_URI: z.string().url().optional(),
 
+  // Xero
+  XERO_CLIENT_ID: z.string().optional(),
+  XERO_CLIENT_SECRET: z.string().optional(),
+  XERO_REDIRECT_URI: z.string().url().optional(),
+
+  // QuickBooks
+  QB_CLIENT_ID: z.string().optional(),
+  QB_CLIENT_SECRET: z.string().optional(),
+  QB_REDIRECT_URI: z.string().url().optional(),
+
   // Encryption
   ENCRYPTION_KEY: z.string().min(32).optional(),
 

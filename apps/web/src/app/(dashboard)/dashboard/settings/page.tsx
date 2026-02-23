@@ -19,8 +19,21 @@ interface Organisation {
   calendar_connected: boolean;
 }
 
+interface AccountingStatus {
+  connected: boolean;
+  provider?: string;
+  last_sync?: {
+    status: string;
+    invoices_found: number;
+    invoices_synced: number;
+    completed_at: string;
+  } | null;
+}
+
 export default function SettingsPage() {
   const { data, loading, refetch } = useApi<{ data: Organisation }>("/organisations");
+  const { data: accountingStatus, refetch: refetchAccounting } = useApi<AccountingStatus>("/accounting/status");
+  const [syncing, setSyncing] = useState(false);
   const [form, setForm] = useState({
     name: "",
     builder_name: "",
@@ -208,6 +221,130 @@ export default function SettingsPage() {
               }`}>
                 {data?.data?.ghl_connected ? "Connected" : "Not connected"}
               </span>
+            </div>
+
+            {/* Xero */}
+            <div className="flex items-center justify-between rounded-lg border border-[var(--border)] p-4">
+              <div>
+                <h3 className="font-medium">Xero</h3>
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  Sync overdue invoices to payment chase queue
+                </p>
+                {accountingStatus?.connected && accountingStatus.provider === "xero" && accountingStatus.last_sync && (
+                  <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                    Last sync: {new Date(accountingStatus.last_sync.completed_at).toLocaleString()}
+                    {" "}({accountingStatus.last_sync.invoices_synced} synced)
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {accountingStatus?.connected && accountingStatus.provider === "xero" ? (
+                  <>
+                    <button
+                      onClick={async () => {
+                        setSyncing(true);
+                        try {
+                          await api.post("/accounting/sync");
+                          setTimeout(() => refetchAccounting(), 3000);
+                        } catch { /* handled */ }
+                        finally { setSyncing(false); }
+                      }}
+                      disabled={syncing}
+                      className="rounded-lg border border-[var(--border)] px-3 py-1 text-xs hover:bg-[var(--accent)] disabled:opacity-50"
+                    >
+                      {syncing ? "Syncing..." : "Sync Now"}
+                    </button>
+                    <button
+                      onClick={async () => {
+                        await api.delete("/accounting/disconnect");
+                        refetchAccounting();
+                      }}
+                      className="rounded-lg border border-red-200 px-3 py-1 text-xs text-red-600 hover:bg-red-50"
+                    >
+                      Disconnect
+                    </button>
+                    <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
+                      Connected
+                    </span>
+                  </>
+                ) : accountingStatus?.connected && accountingStatus.provider !== "xero" ? (
+                  <span className="rounded-full bg-[var(--muted)] px-3 py-1 text-xs font-medium text-[var(--muted-foreground)]">
+                    Using {accountingStatus.provider}
+                  </span>
+                ) : (
+                  <button
+                    onClick={async () => {
+                      const { url } = await api.get<{ url: string }>("/accounting/oauth/authorize", { provider: "xero" });
+                      window.location.href = url;
+                    }}
+                    className="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)]"
+                  >
+                    Connect
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* QuickBooks */}
+            <div className="flex items-center justify-between rounded-lg border border-[var(--border)] p-4">
+              <div>
+                <h3 className="font-medium">QuickBooks</h3>
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  Sync overdue invoices to payment chase queue
+                </p>
+                {accountingStatus?.connected && accountingStatus.provider === "quickbooks" && accountingStatus.last_sync && (
+                  <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                    Last sync: {new Date(accountingStatus.last_sync.completed_at).toLocaleString()}
+                    {" "}({accountingStatus.last_sync.invoices_synced} synced)
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {accountingStatus?.connected && accountingStatus.provider === "quickbooks" ? (
+                  <>
+                    <button
+                      onClick={async () => {
+                        setSyncing(true);
+                        try {
+                          await api.post("/accounting/sync");
+                          setTimeout(() => refetchAccounting(), 3000);
+                        } catch { /* handled */ }
+                        finally { setSyncing(false); }
+                      }}
+                      disabled={syncing}
+                      className="rounded-lg border border-[var(--border)] px-3 py-1 text-xs hover:bg-[var(--accent)] disabled:opacity-50"
+                    >
+                      {syncing ? "Syncing..." : "Sync Now"}
+                    </button>
+                    <button
+                      onClick={async () => {
+                        await api.delete("/accounting/disconnect");
+                        refetchAccounting();
+                      }}
+                      className="rounded-lg border border-red-200 px-3 py-1 text-xs text-red-600 hover:bg-red-50"
+                    >
+                      Disconnect
+                    </button>
+                    <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
+                      Connected
+                    </span>
+                  </>
+                ) : accountingStatus?.connected && accountingStatus.provider !== "quickbooks" ? (
+                  <span className="rounded-full bg-[var(--muted)] px-3 py-1 text-xs font-medium text-[var(--muted-foreground)]">
+                    Using {accountingStatus.provider}
+                  </span>
+                ) : (
+                  <button
+                    onClick={async () => {
+                      const { url } = await api.get<{ url: string }>("/accounting/oauth/authorize", { provider: "quickbooks" });
+                      window.location.href = url;
+                    }}
+                    className="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)]"
+                  >
+                    Connect
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center justify-between rounded-lg border border-[var(--border)] p-4">
