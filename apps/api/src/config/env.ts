@@ -29,6 +29,7 @@ const envSchema = z.object({
 
   // Twilio
   TWILIO_AUTH_TOKEN: z.string().optional(),
+  TWILIO_PHONE_NUMBER: z.string().optional(),
 
   // Sentry
   SENTRY_DSN: z.string().optional(),

@@ -15,4 +15,6 @@ export const QUEUE_NAMES = {
   POST_CALL: "post-call-processing",
   GHL_SYNC: "ghl-sync",
   AGENT_SYNC: "agent-sync",
+  PAYMENT_CHASE: "payment-chase",
+  INVOICE_SYNC: "invoice-sync",
 } as const;

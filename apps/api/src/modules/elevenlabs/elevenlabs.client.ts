@@ -306,7 +306,103 @@ function buildToolConfigs(baseUrl: string) {
         required: ["caller_name", "phone", "message"],
       },
     },
+    {
+      type: "webhook",
+      name: "record_payment_outcome",
+      description: "Record the outcome of a payment chase call (paid, promised, disputed)",
+      webhook: { url: `${baseUrl}/tools/record_payment_outcome`, method: "POST" },
+      parameters: {
+        type: "object",
+        properties: {
+          chase_item_id: { type: "string", description: "The chase queue item ID" },
+          outcome: { type: "string", description: "Payment outcome: paid, promised, or disputed" },
+          promise_date: { type: "string", description: "Date payment was promised for (YYYY-MM-DD)" },
+          notes: { type: "string", description: "Additional notes about the conversation" },
+        },
+        required: ["chase_item_id", "outcome"],
+      },
+    },
   ];
+}
+
+// --- Outbound Calls ---
+
+export function buildPaymentChasePrompt(input: {
+  contactName: string;
+  invoiceReference?: string;
+  amountDue?: number;
+  daysOverdue?: number;
+  chaseCount: number;
+}) {
+  const urgency = input.chaseCount === 0
+    ? "polite first reminder"
+    : input.chaseCount === 1
+      ? "friendly follow-up"
+      : "firm but professional final reminder";
+
+  return `You are calling ${input.contactName} regarding an outstanding invoice.
+Invoice: ${input.invoiceReference ?? "on file"}
+Amount due: ${input.amountDue ? `$${input.amountDue.toFixed(2)}` : "as discussed"}
+${input.daysOverdue ? `Days overdue: ${input.daysOverdue}` : ""}
+Tone: ${urgency} (chase attempt #${input.chaseCount + 1})
+
+GOALS:
+1. Confirm you are speaking with ${input.contactName}
+2. Politely remind them of the outstanding payment
+3. Ask when they expect to make payment
+4. If they commit to a date, use the record_payment_outcome tool with outcome "promised"
+5. If they confirm payment was made, use record_payment_outcome with outcome "paid"
+6. If they dispute the invoice, use record_payment_outcome with outcome "disputed"
+7. Be professional and empathetic - maintain a good business relationship
+8. Thank them for their time`;
+}
+
+export async function initiateOutboundCall(orgId: string, input: {
+  phoneNumber: string;
+  contactName: string;
+  invoiceReference?: string;
+  amountDue?: number;
+  daysOverdue?: number;
+  chaseCount: number;
+  callId: string;
+  chaseItemId: string;
+}) {
+  const { data: org } = await supabaseAdmin
+    .from("organisations")
+    .select("elevenlabs_agent_id, phone_number")
+    .eq("id", orgId)
+    .single();
+
+  if (!org?.elevenlabs_agent_id) {
+    throw new ExternalServiceError("ElevenLabs", "No agent provisioned for this organisation");
+  }
+
+  const prompt = buildPaymentChasePrompt(input);
+  const toolFunctionBaseUrl = `${env.API_BASE_URL}/api/v1/webhooks/elevenlabs`;
+
+  const response = await elFetch("/convai/conversations/create-call", {
+    method: "POST",
+    body: JSON.stringify({
+      agent_id: org.elevenlabs_agent_id,
+      agent_overrides: {
+        agent: {
+          prompt: { prompt },
+          first_message: `Hello, may I speak with ${input.contactName} please?`,
+        },
+      },
+      to: input.phoneNumber,
+      from: org.phone_number ?? env.TWILIO_PHONE_NUMBER,
+      metadata: {
+        call_id: input.callId,
+        chase_item_id: input.chaseItemId,
+        organisation_id: orgId,
+      },
+    }),
+  });
+
+  const data = await response.json() as { conversation_id: string };
+  logger.info({ conversationId: data.conversation_id, orgId }, "Outbound chase call initiated");
+  return data;
 }
 
 // --- Provisioning ---

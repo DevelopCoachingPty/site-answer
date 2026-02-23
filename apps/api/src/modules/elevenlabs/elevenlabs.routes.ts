@@ -5,6 +5,7 @@ import * as orgService from "../organisations/org.service.js";
 import * as kbService from "../knowledge-base/kb.service.js";
 import * as ghlClient from "../ghl/ghl.client.js";
 import * as callsService from "../calls/calls.service.js";
+import * as chaseService from "../payment-chase/chase.service.js";
 import { supabaseAdmin } from "../../lib/supabase.js";
 import { getQueue } from "../../lib/queue.js";
 import { QUEUE_NAMES } from "../../config/constants.js";
@@ -91,6 +92,18 @@ const LogMessageBody = Type.Intersect([
       phone: Type.String(),
       message: Type.String(),
       callback_requested: Type.Optional(Type.Boolean()),
+    }),
+  }),
+]);
+
+const RecordPaymentOutcomeBody = Type.Intersect([
+  ToolCallBase,
+  Type.Object({
+    parameters: Type.Object({
+      chase_item_id: Type.String(),
+      outcome: Type.String(), // paid, promised, disputed
+      promise_date: Type.Optional(Type.String()),
+      notes: Type.Optional(Type.String()),
     }),
   }),
 ]);
@@ -317,6 +330,42 @@ const elevenlabsRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       return reply.send({ success: true });
+    },
+  });
+
+  // Tool: record_payment_outcome (used by outbound chase calls)
+  fastify.post<{ Body: Static<typeof RecordPaymentOutcomeBody> }>("/tools/record_payment_outcome", {
+    schema: { body: RecordPaymentOutcomeBody },
+    handler: async (request, reply) => {
+      const { agent_id, parameters } = request.body;
+      logger.info({ agentId: agent_id, outcome: parameters.outcome }, "Tool: record_payment_outcome");
+
+      const org = await getOrgFromAgent(agent_id);
+      if (!org) {
+        return reply.send({ success: false, reason: "Organisation not found" });
+      }
+
+      try {
+        const updates: Record<string, unknown> = {
+          status: parameters.outcome,
+          notes: parameters.notes,
+        };
+
+        if (parameters.outcome === "promised" && parameters.promise_date) {
+          updates.promise_date = parameters.promise_date;
+        }
+
+        await chaseService.updateChaseItem(
+          org.id,
+          parameters.chase_item_id,
+          updates,
+        );
+
+        return reply.send({ success: true, outcome: parameters.outcome });
+      } catch (err) {
+        logger.error({ err, chaseItemId: parameters.chase_item_id }, "Failed to record payment outcome");
+        return reply.send({ success: false, reason: "Failed to update chase item" });
+      }
     },
   });
 };

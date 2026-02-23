@@ -100,6 +100,7 @@ vi.mock("../lib/queue.js", () => {
     getPostCallQueue: vi.fn(() => mockQueue),
     getGhlSyncQueue: vi.fn(() => mockQueue),
     getAgentSyncQueue: vi.fn(() => mockQueue),
+    getPaymentChaseQueue: vi.fn(() => mockQueue),
     closeQueues: vi.fn().mockResolvedValue(undefined),
   };
 });
