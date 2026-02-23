@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import { env } from "./config/env.js";
 import { API_PREFIX } from "./config/constants.js";
@@ -37,6 +38,10 @@ export async function buildServer() {
   });
 
   // --- Plugins ---
+  await app.register(helmet, {
+    contentSecurityPolicy: false, // CSP handled by Next.js frontend
+  });
+
   await app.register(cors, {
     origin: [env.FRONTEND_URL],
     credentials: true,
