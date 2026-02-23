@@ -1,0 +1,11 @@
+{
+  "name": "@site-answer/supabase",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "db:push": "supabase db push",
+    "db:reset": "supabase db reset",
+    "db:diff": "supabase db diff",
+    "gen:types": "supabase gen types typescript --local > ../shared/src/types/database.ts"
+  }
+}

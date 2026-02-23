@@ -1,0 +1,38 @@
+{
+  "name": "@site-answer/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.2",
+    "@fastify/rate-limit": "^10.2.2",
+    "@fastify/websocket": "^11.0.2",
+    "@sinclair/typebox": "^0.34.14",
+    "@supabase/supabase-js": "^2.49.1",
+    "bullmq": "^5.34.8",
+    "fastify": "^5.2.1",
+    "fastify-plugin": "^5.0.1",
+    "ioredis": "^5.4.2",
+    "pino": "^9.6.0",
+    "pino-pretty": "^13.0.0",
+    "zod": "^3.24.2",
+    "@site-answer/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@site-answer/tsconfig": "workspace:*",
+    "@site-answer/eslint-config": "workspace:*",
+    "@types/node": "^22.13.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
