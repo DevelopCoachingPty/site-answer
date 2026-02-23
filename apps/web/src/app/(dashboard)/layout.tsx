@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { LogoutButton } from "@/components/logout-button";
+import { MobileNav } from "@/components/mobile-nav";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard" },
@@ -29,9 +30,10 @@ export default async function DashboardLayout({
   return (
     <div className="min-h-screen bg-[var(--muted)]">
       {/* Top navigation */}
-      <header className="border-b border-[var(--border)] bg-[var(--background)]">
+      <header className="relative border-b border-[var(--border)] bg-[var(--background)]">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4">
-          <div className="flex items-center gap-8">
+          <div className="flex items-center gap-4 md:gap-8">
+            <MobileNav items={navItems} />
             <Link href="/dashboard" className="text-xl font-bold">
               SiteAnswer
             </Link>
@@ -48,7 +50,7 @@ export default async function DashboardLayout({
             </nav>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-[var(--muted-foreground)]">
+            <span className="hidden sm:inline text-sm text-[var(--muted-foreground)]">
               {user.email}
             </span>
             <LogoutButton />

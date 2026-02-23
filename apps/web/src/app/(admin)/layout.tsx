@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { LogoutButton } from "@/components/logout-button";
+import { MobileNav } from "@/components/mobile-nav";
 
 const adminNavItems = [
   { href: "/admin", label: "Overview" },
@@ -27,9 +29,10 @@ export default async function AdminLayout({
 
   return (
     <div className="min-h-screen bg-[var(--muted)]">
-      <header className="border-b border-[var(--border)] bg-[var(--background)]">
+      <header className="relative border-b border-[var(--border)] bg-[var(--background)]">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4">
-          <div className="flex items-center gap-8">
+          <div className="flex items-center gap-4 md:gap-8">
+            <MobileNav items={adminNavItems} />
             <Link href="/admin" className="text-xl font-bold">
               SiteAnswer <span className="text-sm font-normal text-[var(--muted-foreground)]">Admin</span>
             </Link>
@@ -52,6 +55,7 @@ export default async function AdminLayout({
             >
               Member View
             </Link>
+            <LogoutButton />
           </div>
         </div>
       </header>
