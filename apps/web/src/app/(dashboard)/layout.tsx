@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { LogoutButton } from "@/components/logout-button";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard" },
@@ -50,6 +51,7 @@ export default async function DashboardLayout({
             <span className="text-sm text-[var(--muted-foreground)]">
               {user.email}
             </span>
+            <LogoutButton />
           </div>
         </div>
       </header>
