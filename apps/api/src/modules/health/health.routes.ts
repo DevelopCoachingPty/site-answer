@@ -1,6 +1,8 @@
 import { FastifyPluginAsync } from "fastify";
+import { Queue } from "bullmq";
 import { supabaseAdmin } from "../../lib/supabase.js";
 import { getActiveSessionCount } from "../telephony/audio-bridge.js";
+import { env } from "../../config/env.js";
 
 const healthRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get("/", async (_request, reply) => {
@@ -14,8 +16,17 @@ const healthRoutes: FastifyPluginAsync = async (fastify) => {
       checks.database = "error";
     }
 
-    // Redis check (basic - just report if BullMQ queues were initialized)
-    checks.redis = "ok"; // Will fail at job add time if Redis is down
+    // Redis check via BullMQ connection
+    try {
+      const probe = new Queue("health-probe", {
+        connection: { url: env.REDIS_URL } as never,
+      });
+      await probe.client;
+      await probe.close();
+      checks.redis = "ok";
+    } catch {
+      checks.redis = "error";
+    }
 
     const allOk = Object.values(checks).every((v) => v === "ok");
 
