@@ -1,6 +1,9 @@
 import { FastifyPluginAsync } from "fastify";
 import { Type, Static } from "@sinclair/typebox";
 import * as orgService from "./org.service.js";
+import { createTestCall } from "../elevenlabs/elevenlabs.client.js";
+import { supabaseAdmin } from "../../lib/supabase.js";
+import { env } from "../../config/env.js";
 
 const UpdateOrgBody = Type.Object({
   name: Type.Optional(Type.String({ minLength: 1 })),
@@ -48,12 +51,32 @@ const orgRoutes: FastifyPluginAsync = async (fastify) => {
       body: Type.Object({ phone_number: Type.String({ minLength: 1 }) }),
     },
     handler: async (request, reply) => {
-      // TODO: Trigger actual test call via ElevenLabs/Twilio
+      const orgId = request.organisationId!;
+
+      const { data: org } = await supabaseAdmin
+        .from("organisations")
+        .select("elevenlabs_agent_id, name, phone_number")
+        .eq("id", orgId)
+        .single();
+
+      if (!org?.elevenlabs_agent_id) {
+        return reply.code(400).send({
+          error: "AGENT_NOT_PROVISIONED",
+          message: "No AI agent provisioned. Please contact support.",
+        });
+      }
+
+      const result = await createTestCall(org.elevenlabs_agent_id, {
+        toNumber: request.body.phone_number,
+        fromNumber: org.phone_number ?? env.TWILIO_PHONE_NUMBER ?? "",
+        orgName: org.name,
+      });
+
       request.log.info(
-        { orgId: request.organisationId, phone: request.body.phone_number },
-        "Test call requested",
+        { orgId, phone: request.body.phone_number, conversationId: result.conversation_id },
+        "Test call initiated",
       );
-      return reply.send({ message: "Test call initiated" });
+      return reply.send({ message: "Test call initiated", conversation_id: result.conversation_id });
     },
   });
 };

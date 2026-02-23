@@ -21,7 +21,6 @@ vi.mock("../lib/supabase.js", () => {
 
   const mockSingle = vi.fn().mockResolvedValue({ data: null, error: null });
   const mockRange = vi.fn().mockResolvedValue({ data: [], error: null, count: 0 });
-  const mockLimit = vi.fn().mockResolvedValue({ data: [], error: null });
 
   // Build chainable object that is also thenable (for queries that don't end with .single())
   const chainable: Record<string, unknown> = {};
@@ -29,7 +28,7 @@ vi.mock("../lib/supabase.js", () => {
   const chainMethods = [
     "select", "insert", "update", "delete", "upsert",
     "eq", "neq", "in", "gte", "lte", "ilike",
-    "order",
+    "order", "limit",
   ];
 
   for (const method of chainMethods) {
@@ -39,7 +38,6 @@ vi.mock("../lib/supabase.js", () => {
   // Terminal methods that return Promises
   chainable.single = mockSingle;
   chainable.range = mockRange;
-  chainable.limit = mockLimit;
 
   // Make chainable thenable - when `await query` is used without .single()
   chainable.then = (resolve: (value: unknown) => void, reject?: (reason: unknown) => void) => {
@@ -56,6 +54,7 @@ vi.mock("../lib/supabase.js", () => {
       admin: {
         getUserById: vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
         createUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
+        generateLink: vi.fn().mockResolvedValue({ data: null, error: null }),
       },
     },
     _mockFrom: mockFrom,

@@ -358,7 +358,35 @@ const elevenlabsRoutes: FastifyPluginAsync = async (fastify) => {
           { orgId: org.id, phone: org.escalation_phone },
           "Escalation SMS to builder",
         );
-        // TODO: Send via Twilio/GHL when telephony is wired
+        // Send escalation SMS via Twilio
+        try {
+          const { env: appEnv } = await import("../../config/env.js");
+          const accountSid = appEnv.TWILIO_ACCOUNT_SID;
+          const authToken = appEnv.TWILIO_AUTH_TOKEN;
+          const fromNumber = appEnv.TWILIO_PHONE_NUMBER;
+
+          if (accountSid && authToken && fromNumber) {
+            const smsBody = `ESCALATION (${parameters.urgency_level ?? "normal"}): ${parameters.caller_name ?? "Caller"} (${parameters.caller_number}) - ${parameters.reason}`;
+            await fetch(
+              `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
+                  "Content-Type": "application/x-www-form-urlencoded",
+                },
+                body: new URLSearchParams({
+                  From: fromNumber,
+                  To: org.escalation_phone,
+                  Body: smsBody,
+                }).toString(),
+              },
+            );
+            logger.info({ orgId: org.id, to: org.escalation_phone }, "Escalation SMS sent");
+          }
+        } catch (smsErr) {
+          logger.error({ err: smsErr, orgId: org.id }, "Failed to send escalation SMS");
+        }
       }
 
       return reply.send({ success: true, escalated: true });

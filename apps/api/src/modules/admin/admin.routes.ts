@@ -1,8 +1,10 @@
 import { FastifyPluginAsync } from "fastify";
 import { Type, Static } from "@sinclair/typebox";
+import { logger } from "../../lib/logger.js";
 import * as orgService from "../organisations/org.service.js";
 import * as usageService from "../usage/usage.service.js";
 import * as scriptsService from "../scripts/scripts.service.js";
+import { provisionAgent } from "../elevenlabs/elevenlabs.client.js";
 
 const PaginationQuery = Type.Object({
   page: Type.Optional(Type.Integer({ minimum: 1, default: 1 })),
@@ -80,8 +82,28 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
       // Seed default conversation scripts
       await scriptsService.seedDefaultScripts(org.id);
 
-      // TODO: Provision ElevenLabs agent
-      // TODO: Send welcome email with password reset link
+      // Provision ElevenLabs agent (non-blocking — log error but don't fail org creation)
+      try {
+        await provisionAgent(org.id);
+      } catch (err) {
+        logger.error({ err, orgId: org.id }, "Failed to provision ElevenLabs agent");
+      }
+
+      // Send welcome invite email so user can set their password
+      try {
+        const { supabaseAdmin: supa } = await import("../../lib/supabase.js");
+        const { env: appEnv } = await import("../../config/env.js");
+        const { error: linkError } = await supa.auth.admin.generateLink({
+          type: "invite",
+          email,
+          options: { redirectTo: `${appEnv.FRONTEND_URL}/login` },
+        });
+        if (linkError) {
+          logger.warn({ err: linkError, email }, "Failed to generate invite link");
+        }
+      } catch (err) {
+        logger.warn({ err, email }, "Failed to send welcome email");
+      }
 
       return reply.code(201).send({ data: org });
     },
@@ -95,7 +117,8 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         request.params.id,
         request.body.is_active,
       );
-      // TODO: Enable/disable ElevenLabs agent
+      // ElevenLabs agent stays provisioned but is effectively disabled:
+      // telephony.routes.ts and elevenlabs.routes.ts both filter by is_active=true
       return reply.send({ data: org });
     },
   });

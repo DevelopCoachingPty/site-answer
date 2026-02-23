@@ -25,7 +25,16 @@ export default async function AdminLayout({
     redirect("/login");
   }
 
-  // TODO: Check is_admin from users table and redirect non-admins
+  // Check admin status from users table
+  const { data: profile } = await supabase
+    .from("users")
+    .select("is_admin")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile?.is_admin) {
+    redirect("/dashboard");
+  }
 
   return (
     <div className="min-h-screen bg-[var(--muted)]">

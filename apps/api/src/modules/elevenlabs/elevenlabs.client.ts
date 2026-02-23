@@ -422,6 +422,32 @@ export async function initiateOutboundCall(orgId: string, input: {
   return data;
 }
 
+// --- Test Call ---
+
+export async function createTestCall(agentId: string, input: {
+  toNumber: string;
+  fromNumber: string;
+  orgName: string;
+}): Promise<{ conversation_id: string }> {
+  const response = await elFetch("/convai/conversations/create-call", {
+    method: "POST",
+    body: JSON.stringify({
+      agent_id: agentId,
+      agent_overrides: {
+        agent: {
+          first_message: `Hello, this is a test call from ${input.orgName}'s AI assistant. Everything is working correctly. Have a great day!`,
+        },
+      },
+      to: input.toNumber,
+      from: input.fromNumber,
+    }),
+  });
+
+  const data = await response.json() as { conversation_id: string };
+  logger.info({ conversationId: data.conversation_id, agentId }, "Test call initiated");
+  return data;
+}
+
 // --- Provisioning ---
 
 export async function provisionAgent(orgId: string): Promise<string> {

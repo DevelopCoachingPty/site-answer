@@ -6,6 +6,13 @@ import {
   resetSupabaseMocks,
   mockSupabaseQueryResult,
 } from "../../../__tests__/helpers.js";
+
+// Mock ElevenLabs client to prevent real API calls
+vi.mock("../../elevenlabs/elevenlabs.client.js", () => ({
+  createTestCall: vi.fn().mockResolvedValue({ conversation_id: "conv-123" }),
+  provisionAgent: vi.fn().mockResolvedValue("agent-123"),
+}));
+
 import orgRoutes from "../org.routes.js";
 
 describe("Organisation Routes", () => {
@@ -114,8 +121,15 @@ describe("Organisation Routes", () => {
   });
 
   describe("POST /organisations/test-call", () => {
-    it("accepts test call request", async () => {
+    it("returns 400 when no agent is provisioned", async () => {
       mockAuthenticatedUser({ userId: "user-1", organisationId: "org-1" });
+
+      // Mock org lookup returning no agent_id (default mock returns null data)
+      mockSupabaseQueryResult({
+        elevenlabs_agent_id: null,
+        name: "Test Org",
+        phone_number: "+61400000000",
+      });
 
       const response = await app.inject({
         method: "POST",
@@ -124,9 +138,9 @@ describe("Organisation Routes", () => {
         payload: { phone_number: "+61400000000" },
       });
 
-      expect(response.statusCode).toBe(200);
+      expect(response.statusCode).toBe(400);
       const body = response.json();
-      expect(body.message).toBe("Test call initiated");
+      expect(body.error).toBe("AGENT_NOT_PROVISIONED");
     });
 
     it("returns 400 with empty phone number", async () => {

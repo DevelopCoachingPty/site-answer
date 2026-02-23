@@ -1,6 +1,8 @@
+import { createHmac } from "node:crypto";
 import { FastifyPluginAsync } from "fastify";
 import { Type, Static } from "@sinclair/typebox";
 import { logger } from "../../lib/logger.js";
+import { env } from "../../config/env.js";
 import { claimWebhookEvent, markWebhookFailed } from "../../lib/webhook-events.js";
 import * as orgService from "../organisations/org.service.js";
 import * as callsService from "../calls/calls.service.js";
@@ -8,6 +10,28 @@ import * as ghlClient from "../ghl/ghl.client.js";
 import * as scriptsService from "../scripts/scripts.service.js";
 import * as whatsappService from "../whatsapp/whatsapp.service.js";
 import { supabaseAdmin } from "../../lib/supabase.js";
+
+function verifyTwilioSignature(
+  url: string,
+  params: Record<string, string>,
+  signature: string,
+): boolean {
+  const authToken = env.TWILIO_AUTH_TOKEN;
+  if (!authToken) {
+    logger.warn("TWILIO_AUTH_TOKEN not set, skipping signature verification");
+    return true;
+  }
+
+  const data = url + Object.keys(params)
+    .sort()
+    .reduce((acc, key) => acc + key + params[key], "");
+
+  const expected = createHmac("sha1", authToken)
+    .update(data)
+    .digest("base64");
+
+  return expected === signature;
+}
 
 const IncomingCallBody = Type.Object({
   CallSid: Type.String(),
@@ -117,7 +141,20 @@ const telephonyRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       try {
-        // TODO: Verify Twilio signature (X-Twilio-Signature header)
+        // Verify Twilio signature
+        const twilioSignature = request.headers["x-twilio-signature"] as string | undefined;
+        if (twilioSignature) {
+          const fullUrl = `${env.API_BASE_URL}/api/v1/webhooks/telephony/incoming`;
+          const isValid = verifyTwilioSignature(
+            fullUrl,
+            request.body as unknown as Record<string, string>,
+            twilioSignature,
+          );
+          if (!isValid) {
+            log.warn("Invalid Twilio signature");
+            return reply.code(403).send({ error: "Invalid signature" });
+          }
+        }
 
         // Identify organisation by called number
         const org = await orgService.getOrganisationByPhone(To);

@@ -9,7 +9,7 @@ type MockFn = ReturnType<typeof vi.fn>;
 interface MockAdmin {
   auth: {
     getUser: MockFn;
-    admin: { getUserById: MockFn; createUser: MockFn };
+    admin: { getUserById: MockFn; createUser: MockFn; generateLink: MockFn };
   };
   _mockFrom: MockFn;
   _mockChainable: {
@@ -81,17 +81,19 @@ export function resetSupabaseMocks() {
   admin.auth.getUser.mockResolvedValue({ data: { user: null }, error: null });
   admin.auth.admin.getUserById.mockReset();
   admin.auth.admin.getUserById.mockResolvedValue({ data: { user: null }, error: null });
+  admin.auth.admin.createUser.mockReset();
+  admin.auth.admin.createUser.mockResolvedValue({ data: { user: null }, error: null });
+  admin.auth.admin.generateLink.mockReset();
+  admin.auth.admin.generateLink.mockResolvedValue({ data: null, error: null });
 
   // Reset terminal methods
   chain.single.mockReset();
   chain.single.mockResolvedValue({ data: null, error: null });
   chain.range.mockReset();
   chain.range.mockResolvedValue({ data: [], error: null, count: 0 });
-  chain.limit.mockReset();
-  chain.limit.mockResolvedValue({ data: [], error: null });
 
   // Reset chain methods to return chainable
-  const chainMethodNames = ["select", "insert", "update", "delete", "upsert", "eq", "neq", "in", "gte", "lte", "ilike", "order"];
+  const chainMethodNames = ["select", "insert", "update", "delete", "upsert", "eq", "neq", "in", "gte", "lte", "ilike", "order", "limit"];
   for (const name of chainMethodNames) {
     const fn = chain[name]!;
     fn.mockReset();
@@ -124,8 +126,8 @@ export function mockSupabaseAwaitResult(data: unknown, error: unknown = null) {
 }
 
 /**
- * Queue a mock result for limit() terminal calls.
+ * Queue a mock result for queries ending with limit() (awaited via thenable).
  */
 export function mockSupabaseLimitResult(data: unknown[], error: unknown = null) {
-  getMockAdmin()._mockChainable.limit.mockResolvedValueOnce({ data, error });
+  getMockAdmin()._queueAwaitResult({ data, error });
 }
