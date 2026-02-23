@@ -8,10 +8,12 @@ import errorHandlerPlugin from "./plugins/error-handler.js";
 
 // Module routes
 import healthRoutes from "./modules/health/health.routes.js";
+import authRoutes from "./modules/auth/auth.routes.js";
 import callRoutes from "./modules/calls/calls.routes.js";
 import kbRoutes from "./modules/knowledge-base/kb.routes.js";
 import orgRoutes from "./modules/organisations/org.routes.js";
 import scriptRoutes from "./modules/scripts/scripts.routes.js";
+import usageRoutes from "./modules/usage/usage.routes.js";
 import adminRoutes from "./modules/admin/admin.routes.js";
 import telephonyRoutes from "./modules/telephony/telephony.routes.js";
 import elevenlabsRoutes from "./modules/elevenlabs/elevenlabs.routes.js";
@@ -47,11 +49,15 @@ export async function buildServer() {
   // Health check (no auth)
   await app.register(healthRoutes, { prefix: "/health" });
 
-  // API routes (auth required unless specified in route)
+  // Auth routes (JWT required but no org membership needed)
+  await app.register(authRoutes, { prefix: `${API_PREFIX}/auth` });
+
+  // API routes (auth + org membership required)
   await app.register(callRoutes, { prefix: `${API_PREFIX}/calls` });
   await app.register(kbRoutes, { prefix: `${API_PREFIX}/knowledge-base` });
   await app.register(orgRoutes, { prefix: `${API_PREFIX}/organisations` });
   await app.register(scriptRoutes, { prefix: `${API_PREFIX}/scripts` });
+  await app.register(usageRoutes, { prefix: `${API_PREFIX}/usage` });
   await app.register(adminRoutes, { prefix: `${API_PREFIX}/admin` });
   await app.register(ghlRoutes, { prefix: `${API_PREFIX}/ghl` });
 
