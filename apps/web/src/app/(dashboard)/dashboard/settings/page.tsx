@@ -347,14 +347,50 @@ export default function SettingsPage() {
               </div>
             </div>
 
+            {/* Google Calendar */}
             <div className="flex items-center justify-between rounded-lg border border-[var(--border)] p-4">
               <div>
                 <h3 className="font-medium">Google Calendar</h3>
                 <p className="text-sm text-[var(--muted-foreground)]">Calendar integration for booking appointments</p>
               </div>
-              <span className="rounded-full bg-[var(--muted)] px-3 py-1 text-xs font-medium text-[var(--muted-foreground)]">
-                Coming soon
-              </span>
+              <div className="flex items-center gap-2">
+                {data?.data?.calendar_connected ? (
+                  <>
+                    <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
+                      Connected
+                    </span>
+                  </>
+                ) : (
+                  <button
+                    onClick={async () => {
+                      const { url } = await api.get<{ url: string }>("/calendar/oauth/authorize", { provider: "google" });
+                      window.location.href = url;
+                    }}
+                    className="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)]"
+                  >
+                    Connect
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Outlook Calendar */}
+            <div className="flex items-center justify-between rounded-lg border border-[var(--border)] p-4">
+              <div>
+                <h3 className="font-medium">Outlook Calendar</h3>
+                <p className="text-sm text-[var(--muted-foreground)]">Microsoft calendar for booking appointments</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    const { url } = await api.get<{ url: string }>("/calendar/oauth/authorize", { provider: "outlook" });
+                    window.location.href = url;
+                  }}
+                  className="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)]"
+                >
+                  Connect
+                </button>
+              </div>
             </div>
           </div>
         </section>

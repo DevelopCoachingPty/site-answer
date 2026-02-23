@@ -20,6 +20,7 @@ import elevenlabsRoutes from "./modules/elevenlabs/elevenlabs.routes.js";
 import ghlRoutes from "./modules/ghl/ghl.routes.js";
 import chaseRoutes from "./modules/payment-chase/chase.routes.js";
 import accountingRoutes from "./modules/accounting/accounting.routes.js";
+import calendarRoutes from "./modules/calendar/calendar.routes.js";
 
 export async function buildServer() {
   const app = Fastify({
@@ -64,6 +65,7 @@ export async function buildServer() {
   await app.register(ghlRoutes, { prefix: `${API_PREFIX}/ghl` });
   await app.register(chaseRoutes, { prefix: `${API_PREFIX}/payment-chase` });
   await app.register(accountingRoutes, { prefix: `${API_PREFIX}/accounting` });
+  await app.register(calendarRoutes, { prefix: `${API_PREFIX}/calendar` });
 
   // Webhook routes (signature verification, no JWT auth)
   await app.register(telephonyRoutes, { prefix: `${API_PREFIX}/webhooks/telephony` });

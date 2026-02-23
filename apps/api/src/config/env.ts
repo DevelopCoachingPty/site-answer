@@ -34,6 +34,16 @@ const envSchema = z.object({
   QB_CLIENT_SECRET: z.string().optional(),
   QB_REDIRECT_URI: z.string().url().optional(),
 
+  // Google Calendar
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_REDIRECT_URI: z.string().url().optional(),
+
+  // Microsoft (Outlook Calendar)
+  MS_CLIENT_ID: z.string().optional(),
+  MS_CLIENT_SECRET: z.string().optional(),
+  MS_REDIRECT_URI: z.string().url().optional(),
+
   // Encryption
   ENCRYPTION_KEY: z.string().min(32).optional(),
 

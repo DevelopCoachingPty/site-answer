@@ -6,6 +6,7 @@ import * as kbService from "../knowledge-base/kb.service.js";
 import * as ghlClient from "../ghl/ghl.client.js";
 import * as callsService from "../calls/calls.service.js";
 import * as chaseService from "../payment-chase/chase.service.js";
+import * as calendarService from "../calendar/calendar.service.js";
 import { supabaseAdmin } from "../../lib/supabase.js";
 import { getQueue } from "../../lib/queue.js";
 import { QUEUE_NAMES } from "../../config/constants.js";
@@ -202,24 +203,97 @@ const elevenlabsRoutes: FastifyPluginAsync = async (fastify) => {
   // Tool: check_calendar
   fastify.post<{ Body: Static<typeof CheckCalendarBody> }>("/tools/check_calendar", {
     schema: { body: CheckCalendarBody },
-    handler: async (_request, reply) => {
-      // TODO: Wire to calendar API when calendar integration is built
-      return reply.send({
-        available_slots: [],
-        message: "Calendar integration coming soon. Please offer to have the builder call back to arrange a time.",
-      });
+    handler: async (request, reply) => {
+      const { agent_id, parameters } = request.body;
+      logger.info({ agentId: agent_id }, "Tool: check_calendar");
+
+      const org = await getOrgFromAgent(agent_id);
+      if (!org) {
+        return reply.send({ available_slots: [], message: "Organisation not found" });
+      }
+
+      try {
+        // Parse date range into start/end (default: next 7 days)
+        const now = new Date();
+        const start = now.toISOString();
+        const end = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+        const slots = await calendarService.getAvailableSlots(
+          org.id,
+          start,
+          end,
+          parameters.duration ?? 60,
+        );
+
+        return reply.send({
+          available_slots: slots.slice(0, 10).map((s) => ({
+            start: s.start,
+            end: s.end,
+            display: new Date(s.start).toLocaleString("en-AU", {
+              weekday: "long",
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+            }),
+          })),
+          message: slots.length > 0
+            ? `Found ${slots.length} available slots in the next week.`
+            : "No available slots found. Please offer to have the builder call back to arrange a time.",
+        });
+      } catch (err) {
+        logger.warn({ err, orgId: org.id }, "Calendar check failed");
+        return reply.send({
+          available_slots: [],
+          message: "Calendar not available. Please offer to have the builder call back to arrange a time.",
+        });
+      }
     },
   });
 
   // Tool: book_appointment
   fastify.post<{ Body: Static<typeof BookAppointmentBody> }>("/tools/book_appointment", {
     schema: { body: BookAppointmentBody },
-    handler: async (_request, reply) => {
-      // TODO: Wire to calendar API
-      return reply.send({
-        success: false,
-        message: "Calendar booking coming soon. Please take their details and the builder will call back to arrange.",
-      });
+    handler: async (request, reply) => {
+      const { agent_id, parameters } = request.body;
+      logger.info({ agentId: agent_id, datetime: parameters.datetime }, "Tool: book_appointment");
+
+      const org = await getOrgFromAgent(agent_id);
+      if (!org) {
+        return reply.send({ success: false, message: "Organisation not found" });
+      }
+
+      try {
+        // Calculate end time (default 1 hour appointments)
+        const startTime = new Date(parameters.datetime);
+        const endTime = new Date(startTime.getTime() + 60 * 60 * 1000);
+
+        const appointment = await calendarService.bookAppointment(org.id, {
+          contactName: parameters.contact_id ?? "Caller",
+          start: startTime.toISOString(),
+          end: endTime.toISOString(),
+          title: `${parameters.type} appointment`,
+          notes: parameters.notes,
+        });
+
+        return reply.send({
+          success: true,
+          appointment_id: appointment.id,
+          message: `Appointment booked for ${startTime.toLocaleString("en-AU", {
+            weekday: "long",
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+          })}`,
+        });
+      } catch (err) {
+        logger.error({ err, orgId: org.id }, "Booking failed");
+        return reply.send({
+          success: false,
+          message: "Could not book the appointment. Please take their details and the builder will call back to arrange.",
+        });
+      }
     },
   });
 
