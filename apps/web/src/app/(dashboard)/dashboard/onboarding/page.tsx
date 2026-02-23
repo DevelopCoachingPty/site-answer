@@ -28,8 +28,6 @@ const steps = [
   { id: "test", title: "Test Call", description: "Try calling your AI receptionist" },
 ];
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1";
-
 export default function OnboardingPage() {
   const router = useRouter();
   const { toast } = useToast();

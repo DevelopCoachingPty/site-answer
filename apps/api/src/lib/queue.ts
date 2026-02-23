@@ -1,11 +1,6 @@
 import { Queue, type ConnectionOptions } from "bullmq";
 import { env } from "../config/env.js";
 import { QUEUE_NAMES } from "../config/constants.js";
-import { logger } from "./logger.js";
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-let connection: { quit: () => Promise<string> } | null = null;
-let connectionUrl: string = "";
 
 export async function getRedisConnection(): Promise<ConnectionOptions> {
   // BullMQ accepts a connection URL string directly

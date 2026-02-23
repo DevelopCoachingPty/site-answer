@@ -13,7 +13,7 @@ export async function getOrganisation(orgId: string) {
   }
 
   // Strip encrypted fields before returning
-  const { ghl_access_token_encrypted, ghl_refresh_token_encrypted, calendar_credentials_encrypted, accounting_credentials_encrypted, ...safe } = data;
+  const { ghl_access_token_encrypted, ghl_refresh_token_encrypted: _ghlRefresh, calendar_credentials_encrypted, accounting_credentials_encrypted: _accCreds, ...safe } = data;
 
   return {
     ...safe,

@@ -8,7 +8,6 @@
 import { Worker, type Job } from "bullmq";
 import { logger } from "../lib/logger.js";
 import { env } from "../config/env.js";
-import { QUEUE_NAMES } from "../config/constants.js";
 import { getQueue } from "../lib/queue.js";
 import { supabaseAdmin } from "../lib/supabase.js";
 

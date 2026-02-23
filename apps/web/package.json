@@ -23,10 +23,13 @@
     "@site-answer/shared": "workspace:*"
   },
   "devDependencies": {
+    "@site-answer/eslint-config": "workspace:*",
     "@site-answer/tsconfig": "workspace:*",
     "@types/node": "^22.13.4",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^15.2.0",
     "tailwindcss": "^4.0.6",
     "@tailwindcss/postcss": "^4.0.6",
     "typescript": "^5.7.3"

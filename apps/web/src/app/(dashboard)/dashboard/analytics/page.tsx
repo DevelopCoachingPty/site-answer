@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useApi } from "@/hooks/use-api";
 import { api } from "@/lib/api-client";
-import { CardSkeleton, Skeleton } from "@/components/skeleton";
+import { CardSkeleton } from "@/components/skeleton";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   PieChart, Pie, Cell,

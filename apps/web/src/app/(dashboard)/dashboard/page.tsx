@@ -2,7 +2,7 @@
 
 import { useApi } from "@/hooks/use-api";
 import { formatDuration } from "@/lib/utils";
-import { CardSkeleton, Skeleton, TableSkeleton } from "@/components/skeleton";
+import { CardSkeleton, TableSkeleton } from "@/components/skeleton";
 
 interface CallStats {
   today: { total: number; answered: number; missed: number; escalated: number };

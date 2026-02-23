@@ -1,7 +1,7 @@
 import { FastifyPluginAsync } from "fastify";
 import { Type, Static } from "@sinclair/typebox";
 import { logger } from "../../lib/logger.js";
-import { claimWebhookEvent, markWebhookProcessed, markWebhookFailed } from "../../lib/webhook-events.js";
+import { claimWebhookEvent, markWebhookFailed } from "../../lib/webhook-events.js";
 import * as orgService from "../organisations/org.service.js";
 import * as callsService from "../calls/calls.service.js";
 import * as ghlClient from "../ghl/ghl.client.js";
@@ -137,8 +137,8 @@ const telephonyRoutes: FastifyPluginAsync = async (fastify) => {
         // Determine call flow
         const flowType = await determineFlowType(org, From, withinHours);
 
-        // Get the appropriate script
-        const script = await scriptsService.getActiveScript(org.id, flowType);
+        // Get the appropriate script (used for agent prompt override in future)
+        const _script = await scriptsService.getActiveScript(org.id, flowType);
 
         // Create call record
         const call = await callsService.createCall({

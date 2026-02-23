@@ -2,7 +2,6 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import Fastify, { FastifyInstance } from "fastify";
 import errorHandlerPlugin from "../error-handler.js";
 import {
-  AppError,
   NotFoundError,
   UnauthorizedError,
   ForbiddenError,

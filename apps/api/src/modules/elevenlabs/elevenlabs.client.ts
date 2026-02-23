@@ -396,7 +396,6 @@ export async function initiateOutboundCall(orgId: string, input: {
   }
 
   const prompt = buildPaymentChasePrompt(input);
-  const toolFunctionBaseUrl = `${env.API_BASE_URL}/api/v1/webhooks/elevenlabs`;
 
   const response = await elFetch("/convai/conversations/create-call", {
     method: "POST",

@@ -4,7 +4,6 @@ import { logger } from "../../lib/logger.js";
 import * as orgService from "../organisations/org.service.js";
 import * as kbService from "../knowledge-base/kb.service.js";
 import * as ghlClient from "../ghl/ghl.client.js";
-import * as callsService from "../calls/calls.service.js";
 import * as chaseService from "../payment-chase/chase.service.js";
 import * as calendarService from "../calendar/calendar.service.js";
 import * as whatsappService from "../whatsapp/whatsapp.service.js";
