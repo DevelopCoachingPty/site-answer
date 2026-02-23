@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { api } from "@/lib/api-client";
+import { useToast } from "@/components/toast";
 
 const categories = [
   { id: "services", label: "Services" },
@@ -29,6 +30,7 @@ interface EntryForm {
 }
 
 export default function KnowledgeBasePage() {
+  const { toast } = useToast();
   const [activeCategory, setActiveCategory] = useState("services");
   const [entries, setEntries] = useState<KbEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,7 +70,7 @@ export default function KnowledgeBasePage() {
       setShowAdd(false);
       await fetchEntries();
     } catch {
-      alert("Failed to add entry. Please try again.");
+      toast("Failed to add entry. Please try again.", "error");
     } finally {
       setSaving(false);
     }
@@ -86,7 +88,7 @@ export default function KnowledgeBasePage() {
       setForm({ title: "", content: "" });
       await fetchEntries();
     } catch {
-      alert("Failed to update entry. Please try again.");
+      toast("Failed to update entry. Please try again.", "error");
     } finally {
       setSaving(false);
     }
@@ -98,7 +100,7 @@ export default function KnowledgeBasePage() {
       await api.delete(`/knowledge-base/${id}`);
       await fetchEntries();
     } catch {
-      alert("Failed to delete entry. Please try again.");
+      toast("Failed to delete entry. Please try again.", "error");
     }
   }
 

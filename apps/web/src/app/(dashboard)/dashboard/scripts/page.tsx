@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { api } from "@/lib/api-client";
 import { useApi } from "@/hooks/use-api";
+import { useToast } from "@/components/toast";
 
 interface Script {
   id: string;
@@ -32,6 +33,7 @@ const VARIABLES = [
 ];
 
 export default function ScriptsPage() {
+  const { toast } = useToast();
   const { data, loading, refetch } = useApi<{ data: Script[] }>("/scripts");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", system_prompt: "", first_message: "" });
@@ -73,9 +75,10 @@ export default function ScriptsPage() {
       await api.put(`/scripts/${id}`, form);
       setEditingId(null);
       setPreview(null);
+      toast("Script saved successfully", "success");
       await refetch();
     } catch {
-      alert("Failed to save script. Please try again.");
+      toast("Failed to save script. Please try again.", "error");
     } finally {
       setSaving(false);
     }
@@ -84,9 +87,10 @@ export default function ScriptsPage() {
   async function handlePublish(id: string) {
     try {
       await api.post(`/scripts/${id}/publish`);
+      toast("Script published successfully", "success");
       await refetch();
     } catch {
-      alert("Failed to publish. Please try again.");
+      toast("Failed to publish. Please try again.", "error");
     }
   }
 
@@ -96,7 +100,7 @@ export default function ScriptsPage() {
       const result = await api.post<{ rendered_prompt: string }>(`/scripts/${id}/preview`);
       setPreview(result.rendered_prompt);
     } catch {
-      alert("Failed to generate preview.");
+      toast("Failed to generate preview.", "error");
     } finally {
       setLoadingPreview(false);
     }

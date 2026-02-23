@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { api } from "@/lib/api-client";
 import { useApi } from "@/hooks/use-api";
+import { useToast } from "@/components/toast";
 
 interface Organisation {
   id: string;
@@ -23,6 +24,7 @@ interface OrgsResponse {
 }
 
 export default function AdminOrganisationsPage() {
+  const { toast } = useToast();
   const [page, setPage] = useState(1);
   const [showOnboard, setShowOnboard] = useState(false);
   const [onboardForm, setOnboardForm] = useState({
@@ -47,7 +49,7 @@ export default function AdminOrganisationsPage() {
       setOnboardForm({ name: "", builder_name: "", email: "", phone_number: "" });
       await refetch();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to onboard member");
+      toast(err instanceof Error ? err.message : "Failed to onboard member", "error");
     } finally {
       setSaving(false);
     }
@@ -58,7 +60,7 @@ export default function AdminOrganisationsPage() {
       await api.put(`/admin/organisations/${orgId}/status`, { is_active: !isActive });
       await refetch();
     } catch {
-      alert("Failed to update organisation status");
+      toast("Failed to update organisation status", "error");
     }
   }
 

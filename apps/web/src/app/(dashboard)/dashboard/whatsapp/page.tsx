@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { api } from "@/lib/api-client";
 import { useApi } from "@/hooks/use-api";
+import { useToast } from "@/components/toast";
 
 interface Template {
   id: string;
@@ -39,6 +40,7 @@ const statusColors: Record<string, string> = {
 export default function WhatsAppPage() {
   const { data: templatesData, refetch: refetchTemplates } = useApi<{ data: Template[] }>("/whatsapp/templates");
   const { data: messagesData, refetch: refetchMessages } = useApi<{ data: Message[]; total: number }>("/whatsapp/messages");
+  const { toast } = useToast();
   const [tab, setTab] = useState<"templates" | "messages" | "send">("templates");
   const [editForm, setEditForm] = useState({ name: "", template_type: "booking_confirmation", body_template: "" });
   const [editing, setEditing] = useState(false);
@@ -55,9 +57,10 @@ export default function WhatsAppPage() {
       await api.post("/whatsapp/templates", editForm);
       setEditing(false);
       setEditForm({ name: "", template_type: "booking_confirmation", body_template: "" });
+      toast("Template saved", "success");
       await refetchTemplates();
     } catch {
-      alert("Failed to save template.");
+      toast("Failed to save template.", "error");
     } finally {
       setSaving(false);
     }
@@ -69,7 +72,7 @@ export default function WhatsAppPage() {
       await api.delete(`/whatsapp/templates/${id}`);
       await refetchTemplates();
     } catch {
-      alert("Failed to delete template.");
+      toast("Failed to delete template.", "error");
     }
   }
 
@@ -78,10 +81,11 @@ export default function WhatsAppPage() {
     try {
       await api.post("/whatsapp/send", sendForm);
       setSendForm({ to: "", body: "" });
+      toast("Message sent", "success");
       await refetchMessages();
       setTab("messages");
     } catch {
-      alert("Failed to send message.");
+      toast("Failed to send message.", "error");
     } finally {
       setSending(false);
     }
@@ -95,7 +99,7 @@ export default function WhatsAppPage() {
       await refetchMessages();
       setTab("messages");
     } catch {
-      alert("Failed to send test message.");
+      toast("Failed to send test message.", "error");
     } finally {
       setSending(false);
     }

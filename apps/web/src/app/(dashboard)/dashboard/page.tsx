@@ -2,6 +2,7 @@
 
 import { useApi } from "@/hooks/use-api";
 import { formatDuration } from "@/lib/utils";
+import { CardSkeleton, Skeleton, TableSkeleton } from "@/components/skeleton";
 
 interface CallStats {
   today: { total: number; answered: number; missed: number; escalated: number };
@@ -26,14 +27,22 @@ interface CallsResponse {
 }
 
 export default function DashboardPage() {
-  const { data: stats } = useApi<CallStats>("/calls/stats");
-  const { data: recentCalls } = useApi<CallsResponse>("/calls", { limit: 5 });
+  const { data: stats, loading: statsLoading } = useApi<CallStats>("/calls/stats");
+  const { data: recentCalls, loading: callsLoading } = useApi<CallsResponse>("/calls", { limit: 5 });
 
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
 
       {/* Stats cards */}
+      {statsLoading ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
+      ) : (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
         <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
           <p className="text-sm text-[var(--muted-foreground)]">Today&apos;s Calls</p>
@@ -62,13 +71,31 @@ export default function DashboardPage() {
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">today</p>
         </div>
       </div>
+      )}
 
       {/* Recent calls */}
       <div className="rounded-lg border border-[var(--border)] bg-[var(--card)]">
         <div className="border-b border-[var(--border)] px-6 py-4">
           <h2 className="font-semibold">Recent Calls</h2>
         </div>
-        {recentCalls?.data && recentCalls.data.length > 0 ? (
+        {callsLoading ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--border)]">
+                  <th className="px-6 py-3 text-left font-medium text-[var(--muted-foreground)]">Time</th>
+                  <th className="px-6 py-3 text-left font-medium text-[var(--muted-foreground)]">Caller</th>
+                  <th className="px-6 py-3 text-left font-medium text-[var(--muted-foreground)]">Type</th>
+                  <th className="px-6 py-3 text-left font-medium text-[var(--muted-foreground)]">Duration</th>
+                  <th className="px-6 py-3 text-left font-medium text-[var(--muted-foreground)]">Summary</th>
+                </tr>
+              </thead>
+              <tbody>
+                <TableSkeleton rows={3} cols={5} />
+              </tbody>
+            </table>
+          </div>
+        ) : recentCalls?.data && recentCalls.data.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>

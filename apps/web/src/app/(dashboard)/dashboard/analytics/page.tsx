@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useApi } from "@/hooks/use-api";
 import { api } from "@/lib/api-client";
+import { CardSkeleton, Skeleton } from "@/components/skeleton";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   PieChart, Pie, Cell,
@@ -114,6 +115,14 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Comparison Cards */}
+      {!comparison && (
+        <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
+      )}
       {comparison && (
         <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
           <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">

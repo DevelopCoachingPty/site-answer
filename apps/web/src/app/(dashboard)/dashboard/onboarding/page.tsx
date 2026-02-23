@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api-client";
 import { useApi } from "@/hooks/use-api";
+import { useToast } from "@/components/toast";
 
 interface Organisation {
   id: string;
@@ -31,6 +32,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/a
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const { toast } = useToast();
   const { data: authData } = useApi<{ data: AuthData }>("/auth/me");
   const [currentStep, setCurrentStep] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -68,7 +70,7 @@ export default function OnboardingPage() {
       await api.patch("/organisations", companyForm);
       setCurrentStep(1);
     } catch {
-      alert("Failed to save. Please try again.");
+      toast("Failed to save. Please try again.", "error");
     } finally {
       setSaving(false);
     }
@@ -84,7 +86,7 @@ export default function OnboardingPage() {
       }
       setCurrentStep(2);
     } catch {
-      alert("Failed to save knowledge base entries.");
+      toast("Failed to save knowledge base entries.", "error");
     } finally {
       setSaving(false);
     }

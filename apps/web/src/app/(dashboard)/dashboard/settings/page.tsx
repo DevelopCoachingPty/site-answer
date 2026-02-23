@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api-client";
 import { useApi } from "@/hooks/use-api";
+import { useToast } from "@/components/toast";
 
 interface Organisation {
   id: string;
@@ -32,6 +33,7 @@ interface AccountingStatus {
 
 export default function SettingsPage() {
   const { data, loading, refetch } = useApi<{ data: Organisation }>("/organisations");
+  const { toast } = useToast();
   const { data: accountingStatus, refetch: refetchAccounting } = useApi<AccountingStatus>("/accounting/status");
   const [syncing, setSyncing] = useState(false);
   const [form, setForm] = useState({
@@ -73,10 +75,11 @@ export default function SettingsPage() {
     try {
       await api.patch("/organisations", form);
       setSaved(true);
+      toast("Settings saved successfully", "success");
       await refetch();
       setTimeout(() => setSaved(false), 3000);
     } catch {
-      alert("Failed to save settings. Please try again.");
+      toast("Failed to save settings. Please try again.", "error");
     } finally {
       setSaving(false);
     }
