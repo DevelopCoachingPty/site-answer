@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { api } from "@/lib/api-client";
 import { useApi } from "@/hooks/use-api";
 
@@ -12,6 +12,8 @@ interface Script {
   first_message: string | null;
   is_active: boolean;
   version: number;
+  published_at: string | null;
+  change_notes: string | null;
 }
 
 const flowTypeDescriptions: Record<string, string> = {
@@ -22,11 +24,21 @@ const flowTypeDescriptions: Record<string, string> = {
   supplier_subcontractor: "How the AI handles supplier and sub calls",
 };
 
+const VARIABLES = [
+  { label: "{company_name}", description: "Business name" },
+  { label: "{caller_name}", description: "Caller's name" },
+  { label: "{builder_name}", description: "Builder/owner name" },
+  { label: "{business_hours}", description: "Operating hours" },
+];
+
 export default function ScriptsPage() {
   const { data, loading, refetch } = useApi<{ data: Script[] }>("/scripts");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", system_prompt: "", first_message: "" });
   const [saving, setSaving] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const promptRef = useRef<HTMLTextAreaElement>(null);
 
   function startEdit(script: Script) {
     setEditingId(script.id);
@@ -35,6 +47,24 @@ export default function ScriptsPage() {
       system_prompt: script.system_prompt,
       first_message: script.first_message ?? "",
     });
+    setPreview(null);
+  }
+
+  function insertVariable(variable: string) {
+    const textarea = promptRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const newPrompt =
+      form.system_prompt.substring(0, start) +
+      variable +
+      form.system_prompt.substring(end);
+    setForm({ ...form, system_prompt: newPrompt });
+    // Restore cursor position after variable
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + variable.length, start + variable.length);
+    }, 0);
   }
 
   async function handleSave(id: string) {
@@ -42,11 +72,33 @@ export default function ScriptsPage() {
     try {
       await api.put(`/scripts/${id}`, form);
       setEditingId(null);
+      setPreview(null);
       await refetch();
     } catch {
       alert("Failed to save script. Please try again.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handlePublish(id: string) {
+    try {
+      await api.post(`/scripts/${id}/publish`);
+      await refetch();
+    } catch {
+      alert("Failed to publish. Please try again.");
+    }
+  }
+
+  async function handlePreview(id: string) {
+    setLoadingPreview(true);
+    try {
+      const result = await api.post<{ rendered_prompt: string }>(`/scripts/${id}/preview`);
+      setPreview(result.rendered_prompt);
+    } catch {
+      alert("Failed to generate preview.");
+    } finally {
+      setLoadingPreview(false);
     }
   }
 
@@ -94,25 +146,55 @@ export default function ScriptsPage() {
                     placeholder="The AI's opening greeting"
                     className="w-full rounded-lg border border-[var(--input)] bg-[var(--background)] px-3 py-2 text-sm"
                   />
-                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-                    Use {"{company_name}"} and {"{caller_name}"} as placeholders.
-                  </p>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">System Prompt</label>
-                  <textarea
-                    value={form.system_prompt}
-                    onChange={(e) => setForm({ ...form, system_prompt: e.target.value })}
-                    rows={10}
-                    className="w-full rounded-lg border border-[var(--input)] bg-[var(--background)] px-3 py-2 text-sm font-mono"
-                  />
-                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-                    Instructions for the AI. This controls the conversation flow, tone, and what questions to ask.
-                  </p>
+
+                {/* Variable Insertion Toolbar */}
+                <div className="flex flex-wrap gap-2">
+                  <span className="text-xs text-[var(--muted-foreground)] self-center mr-1">Insert:</span>
+                  {VARIABLES.map((v) => (
+                    <button
+                      key={v.label}
+                      onClick={() => insertVariable(v.label)}
+                      title={v.description}
+                      className="rounded border border-[var(--border)] px-2 py-1 text-xs font-mono hover:bg-[var(--accent)]"
+                    >
+                      {v.label}
+                    </button>
+                  ))}
                 </div>
+
+                {/* Editor + Preview side by side */}
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">System Prompt</label>
+                    <textarea
+                      ref={promptRef}
+                      value={form.system_prompt}
+                      onChange={(e) => setForm({ ...form, system_prompt: e.target.value })}
+                      rows={12}
+                      className="w-full rounded-lg border border-[var(--input)] bg-[var(--background)] px-3 py-2 text-sm font-mono"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-sm font-medium">Preview</label>
+                      <button
+                        onClick={() => handlePreview(script.id)}
+                        disabled={loadingPreview}
+                        className="text-xs text-blue-600 hover:underline disabled:opacity-50"
+                      >
+                        {loadingPreview ? "Loading..." : "Refresh Preview"}
+                      </button>
+                    </div>
+                    <div className="h-[288px] overflow-auto rounded-lg border border-[var(--border)] bg-[var(--muted)] p-3 text-xs font-mono whitespace-pre-wrap">
+                      {preview ?? "Click 'Refresh Preview' to see the rendered prompt with knowledge base and variables filled in."}
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex gap-2 justify-end">
                   <button
-                    onClick={() => setEditingId(null)}
+                    onClick={() => { setEditingId(null); setPreview(null); }}
                     className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-medium hover:bg-[var(--accent)]"
                   >
                     Cancel
@@ -143,13 +225,28 @@ export default function ScriptsPage() {
                   <p className="mt-1 text-sm text-[var(--muted-foreground)]">
                     {flowTypeDescriptions[script.flow_type] ?? script.flow_type}
                   </p>
+                  {script.published_at && (
+                    <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
+                      Published: {new Date(script.published_at).toLocaleString()}
+                    </p>
+                  )}
                 </div>
-                <button
-                  onClick={() => startEdit(script)}
-                  className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-medium hover:bg-[var(--accent)] transition-colors"
-                >
-                  Edit
-                </button>
+                <div className="flex gap-2">
+                  {!script.is_active && (
+                    <button
+                      onClick={() => handlePublish(script.id)}
+                      className="rounded-lg bg-green-600 px-3 py-2 text-xs font-medium text-white hover:bg-green-700"
+                    >
+                      Publish
+                    </button>
+                  )}
+                  <button
+                    onClick={() => startEdit(script)}
+                    className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-medium hover:bg-[var(--accent)] transition-colors"
+                  >
+                    Edit
+                  </button>
+                </div>
               </div>
             )}
           </div>

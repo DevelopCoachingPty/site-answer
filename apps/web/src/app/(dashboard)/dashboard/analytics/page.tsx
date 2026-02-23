@@ -1,159 +1,229 @@
 "use client";
 
+import { useState } from "react";
 import { useApi } from "@/hooks/use-api";
+import { api } from "@/lib/api-client";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  PieChart, Pie, Cell,
+  BarChart, Bar,
+} from "recharts";
 
-interface UsageRecord {
-  id: string;
-  total_calls: number | null;
-  total_minutes: number | null;
-  inbound_calls: number | null;
-  outbound_calls: number | null;
-  missed_calls: number | null;
-  new_contacts_created: number | null;
-  appointments_booked: number | null;
-  sms_sent: number | null;
-  period_start: string;
-  period_end: string;
+interface DailyStats {
+  stat_date: string;
+  total_calls: number;
+  inbound_calls: number;
+  outbound_calls: number;
+  missed_calls: number;
+  completed_calls: number;
+  avg_duration_seconds: number;
 }
 
-interface CallStats {
-  today: { total: number; answered: number; missed: number; escalated: number };
-  this_week: { leads_captured: number; appointments_booked: number };
-  average_duration_seconds: number;
+interface FlowBreakdown {
+  name: string;
+  value: number;
+}
+
+interface SentimentWeek {
+  week: string;
+  positive: number;
+  neutral: number;
+  negative: number;
+}
+
+interface Comparison {
+  current_period: { total_calls: number; avg_duration: number };
+  previous_period: { total_calls: number; avg_duration: number };
+  changes: { total_calls_pct: number; avg_duration_pct: number };
+}
+
+const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
+
+function getDateRange(preset: string) {
+  const now = new Date();
+  const to = now.toISOString().split("T")[0]!;
+  let from: string;
+
+  if (preset === "7d") {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 7);
+    from = d.toISOString().split("T")[0]!;
+  } else if (preset === "30d") {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 30);
+    from = d.toISOString().split("T")[0]!;
+  } else {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 90);
+    from = d.toISOString().split("T")[0]!;
+  }
+
+  return { from, to };
 }
 
 export default function AnalyticsPage() {
-  const { data: usage } = useApi<{ data: UsageRecord }>("/usage");
-  const { data: history } = useApi<{ data: UsageRecord[] }>("/usage/history", { months: 6 });
-  const { data: stats } = useApi<CallStats>("/calls/stats");
+  const [range, setRange] = useState("30d");
+  const { from, to } = getDateRange(range);
 
-  const current = usage?.data;
+  const { data: daily } = useApi<{ data: DailyStats[] }>("/analytics/daily", { from, to });
+  const { data: flow } = useApi<{ data: FlowBreakdown[] }>("/analytics/flow-breakdown", { from, to });
+  const { data: sentiment } = useApi<{ data: SentimentWeek[] }>("/analytics/sentiment", { from, to });
+  const { data: comparison } = useApi<Comparison>("/analytics/comparison", { from, to });
+
+  const chartData = (daily?.data ?? []).map((d) => ({
+    ...d,
+    date: new Date(d.stat_date).toLocaleDateString("en-AU", { month: "short", day: "numeric" }),
+  }));
+
+  async function handleExport() {
+    const csvData = await api.get<string>("/analytics/export", { from, to, format: "csv" });
+    const blob = new Blob([csvData], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `analytics-${from}-${to}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Analytics</h1>
-
-      {/* Stats row */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
-          <p className="text-sm text-[var(--muted-foreground)]">Total Calls This Month</p>
-          <p className="mt-2 text-3xl font-bold">{current?.total_calls ?? 0}</p>
-        </div>
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
-          <p className="text-sm text-[var(--muted-foreground)]">Minutes Used</p>
-          <p className="mt-2 text-3xl font-bold">
-            {Math.round(Number(current?.total_minutes ?? 0))}
-          </p>
-        </div>
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
-          <p className="text-sm text-[var(--muted-foreground)]">New Contacts</p>
-          <p className="mt-2 text-3xl font-bold">{current?.new_contacts_created ?? 0}</p>
-        </div>
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
-          <p className="text-sm text-[var(--muted-foreground)]">Appointments Booked</p>
-          <p className="mt-2 text-3xl font-bold">{current?.appointments_booked ?? 0}</p>
-        </div>
-      </div>
-
-      {/* Detailed breakdown */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 mb-8">
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
-          <h2 className="font-semibold mb-4">This Month Breakdown</h2>
-          <div className="space-y-3">
-            <div className="flex justify-between text-sm">
-              <span className="text-[var(--muted-foreground)]">Inbound calls</span>
-              <span className="font-medium">{current?.inbound_calls ?? 0}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-[var(--muted-foreground)]">Outbound calls</span>
-              <span className="font-medium">{current?.outbound_calls ?? 0}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-[var(--muted-foreground)]">Missed calls</span>
-              <span className="font-medium">{current?.missed_calls ?? 0}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-[var(--muted-foreground)]">SMS sent</span>
-              <span className="font-medium">{current?.sms_sent ?? 0}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-[var(--muted-foreground)]">Avg. call duration</span>
-              <span className="font-medium">
-                {stats?.average_duration_seconds
-                  ? `${Math.round(stats.average_duration_seconds / 60)} min`
-                  : "N/A"}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
-          <h2 className="font-semibold mb-4">Today&apos;s Activity</h2>
-          <div className="space-y-3">
-            <div className="flex justify-between text-sm">
-              <span className="text-[var(--muted-foreground)]">Total calls</span>
-              <span className="font-medium">{stats?.today?.total ?? 0}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-[var(--muted-foreground)]">Answered</span>
-              <span className="font-medium text-green-600">{stats?.today?.answered ?? 0}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-[var(--muted-foreground)]">Missed</span>
-              <span className="font-medium text-red-600">{stats?.today?.missed ?? 0}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-[var(--muted-foreground)]">Escalated</span>
-              <span className="font-medium text-yellow-600">{stats?.today?.escalated ?? 0}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-[var(--muted-foreground)]">Leads captured this week</span>
-              <span className="font-medium">{stats?.this_week?.leads_captured ?? 0}</span>
-            </div>
-          </div>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Analytics</h1>
+        <div className="flex gap-2">
+          {["7d", "30d", "90d"].map((preset) => (
+            <button
+              key={preset}
+              onClick={() => setRange(preset)}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                range === preset
+                  ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                  : "border border-[var(--border)] hover:bg-[var(--accent)]"
+              }`}
+            >
+              {preset}
+            </button>
+          ))}
+          <button
+            onClick={handleExport}
+            className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--accent)]"
+          >
+            Export CSV
+          </button>
         </div>
       </div>
 
-      {/* History table */}
-      <div className="rounded-lg border border-[var(--border)] bg-[var(--card)]">
-        <div className="border-b border-[var(--border)] px-6 py-4">
-          <h2 className="font-semibold">Monthly History</h2>
+      {/* Comparison Cards */}
+      {comparison && (
+        <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+            <p className="text-sm text-[var(--muted-foreground)]">Total Calls</p>
+            <p className="text-2xl font-bold">{comparison.current_period.total_calls}</p>
+            <p className={`text-xs ${comparison.changes.total_calls_pct >= 0 ? "text-green-600" : "text-red-600"}`}>
+              {comparison.changes.total_calls_pct >= 0 ? "+" : ""}{comparison.changes.total_calls_pct}% vs previous
+            </p>
+          </div>
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+            <p className="text-sm text-[var(--muted-foreground)]">Avg Duration</p>
+            <p className="text-2xl font-bold">
+              {comparison.current_period.avg_duration > 0
+                ? `${Math.round(comparison.current_period.avg_duration / 60)}m`
+                : "N/A"}
+            </p>
+            <p className={`text-xs ${comparison.changes.avg_duration_pct >= 0 ? "text-green-600" : "text-red-600"}`}>
+              {comparison.changes.avg_duration_pct >= 0 ? "+" : ""}{comparison.changes.avg_duration_pct}% vs previous
+            </p>
+          </div>
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+            <p className="text-sm text-[var(--muted-foreground)]">Inbound</p>
+            <p className="text-2xl font-bold">
+              {(daily?.data ?? []).reduce((s, d) => s + d.inbound_calls, 0)}
+            </p>
+          </div>
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+            <p className="text-sm text-[var(--muted-foreground)]">Missed</p>
+            <p className="text-2xl font-bold text-red-600">
+              {(daily?.data ?? []).reduce((s, d) => s + d.missed_calls, 0)}
+            </p>
+          </div>
         </div>
-        {history?.data && history.data.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--border)]">
-                  <th className="px-6 py-3 text-left font-medium text-[var(--muted-foreground)]">Month</th>
-                  <th className="px-6 py-3 text-right font-medium text-[var(--muted-foreground)]">Calls</th>
-                  <th className="px-6 py-3 text-right font-medium text-[var(--muted-foreground)]">Minutes</th>
-                  <th className="px-6 py-3 text-right font-medium text-[var(--muted-foreground)]">Contacts</th>
-                  <th className="px-6 py-3 text-right font-medium text-[var(--muted-foreground)]">Appointments</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.data.map((record) => (
-                  <tr key={record.id} className="border-b border-[var(--border)] last:border-0">
-                    <td className="px-6 py-3">
-                      {new Date(record.period_start + "T00:00:00").toLocaleDateString("en-AU", {
-                        year: "numeric",
-                        month: "long",
-                      })}
-                    </td>
-                    <td className="px-6 py-3 text-right">{record.total_calls ?? 0}</td>
-                    <td className="px-6 py-3 text-right">{Math.round(Number(record.total_minutes ?? 0))}</td>
-                    <td className="px-6 py-3 text-right">{record.new_contacts_created ?? 0}</td>
-                    <td className="px-6 py-3 text-right">{record.appointments_booked ?? 0}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      )}
+
+      {/* Call Volume Chart */}
+      <div className="mb-6 rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
+        <h2 className="mb-4 font-semibold">Call Volume</h2>
+        <div className="h-72">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+              <YAxis tick={{ fontSize: 12 }} />
+              <Tooltip />
+              <Legend />
+              <Line type="monotone" dataKey="inbound_calls" name="Inbound" stroke="#3b82f6" strokeWidth={2} />
+              <Line type="monotone" dataKey="outbound_calls" name="Outbound" stroke="#10b981" strokeWidth={2} />
+              <Line type="monotone" dataKey="missed_calls" name="Missed" stroke="#ef4444" strokeWidth={2} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      <div className="mb-6 grid gap-6 md:grid-cols-2">
+        {/* Flow Type Pie Chart */}
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
+          <h2 className="mb-4 font-semibold">Call Types</h2>
+          <div className="h-64">
+            {flow?.data && flow.data.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={flow.data}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={80}
+                    label={({ name, percent }) => `${(name as string).replace(/_/g, " ")} ${(percent * 100).toFixed(0)}%`}
+                  >
+                    {flow.data.map((_, i) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-[var(--muted-foreground)]">
+                No data available
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="p-6 text-center text-[var(--muted-foreground)]">
-            No usage history yet.
+        </div>
+
+        {/* Sentiment Bar Chart */}
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
+          <h2 className="mb-4 font-semibold">Sentiment Trend</h2>
+          <div className="h-64">
+            {sentiment?.data && sentiment.data.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={sentiment.data}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="week" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="positive" name="Positive" fill="#10b981" stackId="a" />
+                  <Bar dataKey="neutral" name="Neutral" fill="#f59e0b" stackId="a" />
+                  <Bar dataKey="negative" name="Negative" fill="#ef4444" stackId="a" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-[var(--muted-foreground)]">
+                No data available
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

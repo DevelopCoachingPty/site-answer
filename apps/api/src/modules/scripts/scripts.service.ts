@@ -1,5 +1,8 @@
 import { supabaseAdmin } from "../../lib/supabase.js";
 import { NotFoundError } from "../../lib/errors.js";
+import { getQueue } from "../../lib/queue.js";
+import { QUEUE_NAMES } from "../../config/constants.js";
+import { logger } from "../../lib/logger.js";
 
 export async function listScripts(orgId: string) {
   const { data, error } = await supabaseAdmin
@@ -103,6 +106,98 @@ export async function createScript(orgId: string, input: {
   }
 
   return data;
+}
+
+export async function getScriptVersionHistory(orgId: string, flowType: string) {
+  const { data, error } = await supabaseAdmin
+    .from("conversation_scripts")
+    .select("id, name, flow_type, version, is_active, published_at, published_by, change_notes, created_at")
+    .eq("organisation_id", orgId)
+    .eq("flow_type", flowType)
+    .order("version", { ascending: false });
+
+  if (error) {
+    throw new Error(`Failed to get version history: ${error.message}`);
+  }
+
+  return data ?? [];
+}
+
+export async function publishScript(orgId: string, scriptId: string, userId: string) {
+  // Get the script to publish
+  const script = await getScript(orgId, scriptId);
+
+  // Deactivate all other versions of this flow type
+  await supabaseAdmin
+    .from("conversation_scripts")
+    .update({ is_active: false })
+    .eq("organisation_id", orgId)
+    .eq("flow_type", script.flow_type)
+    .neq("id", scriptId);
+
+  // Activate and mark as published
+  const { data, error } = await supabaseAdmin
+    .from("conversation_scripts")
+    .update({
+      is_active: true,
+      published_at: new Date().toISOString(),
+      published_by: userId,
+    })
+    .eq("id", scriptId)
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to publish script: ${error.message}`);
+  }
+
+  // Queue agent sync
+  try {
+    const queue = getQueue(QUEUE_NAMES.AGENT_SYNC);
+    await queue.add("sync", { organisationId: orgId, trigger: "script_published" }, {
+      jobId: `agent-sync-${orgId}`,
+      attempts: 3,
+      backoff: { type: "exponential", delay: 5000 },
+      delay: 2000,
+    });
+  } catch (err) {
+    logger.warn({ err }, "Failed to queue agent sync after publish");
+  }
+
+  return data;
+}
+
+export async function previewScript(orgId: string, scriptId: string) {
+  const script = await getScript(orgId, scriptId);
+
+  // Import buildSystemPrompt dynamically to avoid circular deps
+  const { buildSystemPrompt } = await import("../elevenlabs/elevenlabs.client.js");
+  const fullPrompt = await buildSystemPrompt(orgId);
+
+  return {
+    script,
+    rendered_prompt: fullPrompt,
+  };
+}
+
+export async function createScriptVersion(orgId: string, input: {
+  flow_type: string;
+  name: string;
+  system_prompt: string;
+  first_message?: string;
+  change_notes?: string;
+}) {
+  const script = await createScript(orgId, input);
+
+  // Update change_notes if provided
+  if (input.change_notes) {
+    await supabaseAdmin
+      .from("conversation_scripts")
+      .update({ change_notes: input.change_notes })
+      .eq("id", script.id);
+  }
+
+  return script;
 }
 
 const DEFAULT_SCRIPTS = [
