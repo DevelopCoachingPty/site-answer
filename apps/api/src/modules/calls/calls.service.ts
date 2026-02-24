@@ -30,9 +30,12 @@ export async function listCalls(orgId: string, filters: CallFilters) {
     query = query.lte("started_at", filters.date_to);
   }
   if (filters.search) {
-    query = query.or(
-      `caller_name.ilike.%${filters.search}%,caller_number.ilike.%${filters.search}%,summary.ilike.%${filters.search}%`,
-    );
+    const s = filters.search.replace(/[%_\\(),."]/g, "");
+    if (s) {
+      query = query.or(
+        `caller_name.ilike.%${s}%,caller_number.ilike.%${s}%,summary.ilike.%${s}%`,
+      );
+    }
   }
 
   const from = (filters.page - 1) * filters.limit;

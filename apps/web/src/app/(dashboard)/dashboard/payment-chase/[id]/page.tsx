@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useApi } from "@/hooks/use-api";
 import { api } from "@/lib/api-client";
+import { useToast } from "@/components/toast";
 import { formatDuration } from "@/lib/utils";
 
 interface ChaseCall {
@@ -57,6 +58,7 @@ function formatCurrency(amount: number | null) {
 export default function ChaseDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { toast } = useToast();
   const [updating, setUpdating] = useState(false);
   const [editNotes, setEditNotes] = useState("");
   const [showNotes, setShowNotes] = useState(false);
@@ -72,7 +74,7 @@ export default function ChaseDetailPage() {
       await api.patch(`/payment-chase/${params.id}`, { status });
       refetch();
     } catch {
-      // handled by api client
+      toast("Failed to update status. Please try again.", "error");
     } finally {
       setUpdating(false);
     }
@@ -83,7 +85,7 @@ export default function ChaseDetailPage() {
       await api.post(`/payment-chase/${params.id}/chase-now`);
       refetch();
     } catch {
-      // handled by api client
+      toast("Failed to trigger chase. Please try again.", "error");
     }
   }
 
@@ -94,7 +96,7 @@ export default function ChaseDetailPage() {
       setShowNotes(false);
       refetch();
     } catch {
-      // handled by api client
+      toast("Failed to save notes. Please try again.", "error");
     } finally {
       setUpdating(false);
     }
@@ -106,7 +108,7 @@ export default function ChaseDetailPage() {
       await api.delete(`/payment-chase/${params.id}`);
       router.push("/dashboard/payment-chase");
     } catch {
-      // handled by api client
+      toast("Failed to delete chase item. Please try again.", "error");
     }
   }
 

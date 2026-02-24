@@ -16,6 +16,79 @@ import { WebSocket } from "ws";
 import { logger } from "../../lib/logger.js";
 import { env } from "../../config/env.js";
 
+// --- Mulaw <-> PCM16 codec conversion ---
+
+// Standard mulaw decompression lookup table
+const MULAW_DECODE_TABLE = new Int16Array(256);
+(function buildMulawDecodeTable() {
+  for (let i = 0; i < 256; i++) {
+    let mu = ~i & 0xff;
+    const sign = mu & 0x80 ? -1 : 1;
+    mu = mu & 0x7f;
+    const exponent = (mu >> 4) & 0x07;
+    const mantissa = mu & 0x0f;
+    let sample = ((mantissa << 1) + 33) << (exponent + 2);
+    sample -= 0x84;
+    MULAW_DECODE_TABLE[i] = sign * sample;
+  }
+})();
+
+/** Convert mulaw 8kHz mono to PCM16 16kHz mono (linear interpolation upsample) */
+function mulawToPcm16(mulawBase64: string): string {
+  const mulawBytes = Buffer.from(mulawBase64, "base64");
+  // Decode mulaw to PCM16 at 8kHz
+  const pcm8k = new Int16Array(mulawBytes.length);
+  for (let i = 0; i < mulawBytes.length; i++) {
+    pcm8k[i] = MULAW_DECODE_TABLE[mulawBytes[i]!]!;
+  }
+  // Upsample 8kHz -> 16kHz via linear interpolation
+  const pcm16k = new Int16Array(pcm8k.length * 2);
+  for (let i = 0; i < pcm8k.length - 1; i++) {
+    pcm16k[i * 2] = pcm8k[i]!;
+    pcm16k[i * 2 + 1] = Math.round((pcm8k[i]! + pcm8k[i + 1]!) / 2);
+  }
+  if (pcm8k.length > 0) {
+    pcm16k[(pcm8k.length - 1) * 2] = pcm8k[pcm8k.length - 1]!;
+    pcm16k[(pcm8k.length - 1) * 2 + 1] = pcm8k[pcm8k.length - 1]!;
+  }
+  return Buffer.from(pcm16k.buffer).toString("base64");
+}
+
+/** Encode a single PCM16 sample to mulaw byte */
+function pcm16ToMulawSample(sample: number): number {
+  const MULAW_MAX = 0x1fff;
+  const MULAW_BIAS = 0x84;
+  let sign = 0;
+  if (sample < 0) {
+    sign = 0x80;
+    sample = -sample;
+  }
+  if (sample > MULAW_MAX) sample = MULAW_MAX;
+  sample += MULAW_BIAS;
+  let exponent = 7;
+  const mask = 0x4000;
+  for (; exponent > 0; exponent--) {
+    if (sample & mask) break;
+    sample <<= 1;
+  }
+  const mantissa = (sample >> 10) & 0x0f;
+  return ~(sign | (exponent << 4) | mantissa) & 0xff;
+}
+
+/** Convert PCM16 16kHz mono to mulaw 8kHz mono (downsample by averaging pairs) */
+function pcm16ToMulaw(pcm16Base64: string): string {
+  const pcmBuf = Buffer.from(pcm16Base64, "base64");
+  const pcm16k = new Int16Array(pcmBuf.buffer, pcmBuf.byteOffset, pcmBuf.byteLength / 2);
+  // Downsample 16kHz -> 8kHz by averaging pairs
+  const samples8k = Math.floor(pcm16k.length / 2);
+  const mulawBytes = Buffer.alloc(samples8k);
+  for (let i = 0; i < samples8k; i++) {
+    const avg = Math.round((pcm16k[i * 2]! + pcm16k[i * 2 + 1]!) / 2);
+    mulawBytes[i] = pcm16ToMulawSample(avg);
+  }
+  return mulawBytes.toString("base64");
+}
+
 interface BridgeSession {
   callSid: string;
   callId: string;
@@ -84,13 +157,13 @@ export function connectToElevenLabs(session: BridgeSession): void {
         const message = JSON.parse(data.toString());
 
         if (message.type === "audio") {
-          // ElevenLabs sends base64 PCM16 audio
-          // Convert to mulaw for Twilio (simplified - real implementation needs proper conversion)
+          // ElevenLabs sends base64 PCM16 16kHz — convert to mulaw 8kHz for Twilio
+          const mulawPayload = pcm16ToMulaw(message.audio);
           session.twilioWs.send(JSON.stringify({
             event: "media",
             streamSid: session.streamSid,
             media: {
-              payload: message.audio, // Base64 encoded audio
+              payload: mulawPayload,
             },
           }));
         } else if (message.type === "tool_call") {
@@ -139,11 +212,11 @@ export function handleTwilioMessage(session: BridgeSession, message: string): vo
       case "media":
         // Forward audio from Twilio to ElevenLabs
         if (session.elevenLabsWs?.readyState === WebSocket.OPEN) {
-          // Twilio sends base64 mulaw audio
-          // Convert to PCM16 for ElevenLabs (simplified)
+          // Twilio sends base64 mulaw 8kHz — convert to PCM16 16kHz for ElevenLabs
+          const pcmPayload = mulawToPcm16(data.media?.payload ?? "");
           session.elevenLabsWs.send(JSON.stringify({
             type: "audio",
-            audio: data.media?.payload, // Base64 encoded audio
+            audio: pcmPayload,
           }));
         }
         break;

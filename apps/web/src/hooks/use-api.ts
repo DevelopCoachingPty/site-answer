@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "@/lib/api-client";
 
 interface UseApiState<T> {
@@ -15,6 +15,9 @@ export function useApi<T>(path: string, params?: Record<string, string | number 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Stable serialization of params to avoid unnecessary re-fetches
+  const paramsKey = useMemo(() => JSON.stringify(params), [params]);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -26,7 +29,8 @@ export function useApi<T>(path: string, params?: Record<string, string | number 
     } finally {
       setLoading(false);
     }
-  }, [path, JSON.stringify(params)]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path, paramsKey]);
 
   useEffect(() => {
     fetchData();

@@ -1,4 +1,6 @@
 import { supabaseAdmin } from "../../lib/supabase.js";
+import { AppError } from "../../lib/errors.js";
+import { env } from "../../config/env.js";
 
 export async function getOrCreateUsageRecord(orgId: string) {
   const now = new Date();
@@ -31,7 +33,7 @@ export async function getOrCreateUsageRecord(orgId: string) {
     .single();
 
   if (error) {
-    throw new Error(`Failed to create usage record: ${error.message}`);
+    throw new AppError(500, `Failed to create usage record: ${error.message}`, "DB_ERROR");
   }
 
   return data;
@@ -72,7 +74,7 @@ export async function incrementUsage(
     .single();
 
   if (error) {
-    throw new Error(`Failed to update usage: ${error.message}`);
+    throw new AppError(500, `Failed to update usage: ${error.message}`, "DB_ERROR");
   }
 
   return data;
@@ -90,7 +92,7 @@ export async function getUsageHistory(orgId: string, months = 6) {
     .order("period_start", { ascending: true });
 
   if (error) {
-    throw new Error(`Failed to get usage history: ${error.message}`);
+    throw new AppError(500, `Failed to get usage history: ${error.message}`, "DB_ERROR");
   }
 
   return data ?? [];
@@ -108,7 +110,7 @@ export async function getGlobalUsage() {
     .eq("period_start", periodStart);
 
   if (error) {
-    throw new Error(`Failed to get global usage: ${error.message}`);
+    throw new AppError(500, `Failed to get global usage: ${error.message}`, "DB_ERROR");
   }
 
   const records = data ?? [];
@@ -122,10 +124,8 @@ export async function getGlobalUsage() {
     { total_calls: 0, total_minutes: 0, new_contacts: 0, member_count: 0 },
   );
 
-  // Estimate costs: ~$0.08/min ElevenLabs
-  const elevenlabsCost = Math.round(totals.total_minutes * 0.08 * 100) / 100;
-  // Estimate revenue: ~$0.16/min at 4x markup
-  const estimatedRevenue = Math.round(totals.total_minutes * 0.16 * 100) / 100;
+  const elevenlabsCost = Math.round(totals.total_minutes * env.ELEVENLABS_COST_PER_MIN * 100) / 100;
+  const estimatedRevenue = Math.round(totals.total_minutes * env.REBILL_RATE_PER_MIN * 100) / 100;
 
   return {
     ...totals,

@@ -56,6 +56,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
   // POST /admin/organisations - Onboard new member
   fastify.post<{ Body: Static<typeof OnboardBody> }>("/organisations", {
     schema: { body: OnboardBody },
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
     handler: async (request, reply) => {
       const { name, builder_name, email, phone_number, ghl_location_id } = request.body;
 
@@ -125,32 +126,51 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
   // GET /admin/usage - Global usage dashboard
   fastify.get("/usage", async (_request, reply) => {
-    const usage = await usageService.getGlobalUsage();
-    return reply.send(usage);
+    try {
+      const usage = await usageService.getGlobalUsage();
+      return reply.send(usage);
+    } catch (err) {
+      logger.error({ err }, "Failed to get global usage");
+      return reply.code(500).send({ error: "Failed to load usage data" });
+    }
   });
 
   // GET /admin/usage/:org_id - Per-member usage
   fastify.get<{ Params: Static<typeof OrgIdParams> }>("/usage/:org_id", {
     schema: { params: OrgIdParams },
     handler: async (request, reply) => {
-      const usage = await usageService.getUsageHistory(request.params.org_id);
-      return reply.send({ data: usage });
+      try {
+        const usage = await usageService.getUsageHistory(request.params.org_id);
+        return reply.send({ data: usage });
+      } catch (err) {
+        logger.error({ err, orgId: request.params.org_id }, "Failed to get org usage");
+        return reply.code(500).send({ error: "Failed to load usage data" });
+      }
     },
   });
 
   // GET /admin/alerts - Cost alerts
   fastify.get("/alerts", async (_request, reply) => {
-    // Query notifications table for unresolved cost alerts
-    const { supabaseAdmin } = await import("../../lib/supabase.js");
-    const { data } = await supabaseAdmin
-      .from("notifications")
-      .select("*")
-      .in("type", ["usage_limit_warning", "usage_limit_exceeded"])
-      .eq("is_read", false)
-      .order("created_at", { ascending: false })
-      .limit(50);
+    try {
+      const { supabaseAdmin } = await import("../../lib/supabase.js");
+      const { data, error } = await supabaseAdmin
+        .from("notifications")
+        .select("*")
+        .in("type", ["usage_limit_warning", "usage_limit_exceeded"])
+        .eq("is_read", false)
+        .order("created_at", { ascending: false })
+        .limit(50);
 
-    return reply.send({ data: data ?? [] });
+      if (error) {
+        logger.error({ err: error }, "Failed to query alerts");
+        return reply.code(500).send({ error: "Failed to load alerts" });
+      }
+
+      return reply.send({ data: data ?? [] });
+    } catch (err) {
+      logger.error({ err }, "Failed to get alerts");
+      return reply.code(500).send({ error: "Failed to load alerts" });
+    }
   });
 };
 

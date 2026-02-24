@@ -11,6 +11,7 @@ import { env } from "../config/env.js";
 import { getQueue } from "../lib/queue.js";
 import { supabaseAdmin } from "../lib/supabase.js";
 
+
 async function processStatsAggregation(job: Job) {
   const log = logger.child({ jobId: job.id });
   log.info("Running stats aggregation");
@@ -90,10 +91,10 @@ export function startStatsAggregationWorker() {
     },
   );
 
-  // Nightly at 2am
+  // Configurable cron schedule (default: nightly at 2am)
   const queue = getQueue("stats-aggregation");
   queue.add("aggregate", {}, {
-    repeat: { pattern: "0 2 * * *" },
+    repeat: { pattern: env.STATS_AGGREGATION_CRON },
     jobId: "nightly-stats",
   }).catch((err) => {
     logger.error({ err }, "Failed to set up stats aggregation schedule");

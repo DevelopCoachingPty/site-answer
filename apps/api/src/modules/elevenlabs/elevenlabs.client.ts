@@ -143,7 +143,7 @@ export async function buildSystemPrompt(orgId: string): Promise<string> {
 Builder: ${org.builder_name ?? "the owner"}
 ${org.greeting_name ? `Refer to the business as: ${org.greeting_name}` : ""}
 Phone: ${org.phone_number ?? "not set"}
-Timezone: ${org.timezone ?? "Australia/Sydney"}
+Timezone: ${org.timezone ?? env.DEFAULT_TIMEZONE}
 Escalation phone: ${org.escalation_phone ?? "not set"}
 ${org.escalation_sms ? "Send SMS when escalating." : ""}
 

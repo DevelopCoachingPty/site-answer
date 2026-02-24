@@ -18,7 +18,11 @@ function verifyTwilioSignature(
 ): boolean {
   const authToken = env.TWILIO_AUTH_TOKEN;
   if (!authToken) {
-    logger.warn("TWILIO_AUTH_TOKEN not set, skipping signature verification");
+    if (env.NODE_ENV === "production") {
+      logger.error("TWILIO_AUTH_TOKEN not set in production — rejecting webhook");
+      return false;
+    }
+    logger.warn("TWILIO_AUTH_TOKEN not set, skipping signature verification (dev only)");
     return true;
   }
 
@@ -64,7 +68,7 @@ function isBusinessHours(org: {
 }): boolean {
   if (!org.business_hours) return true; // Default: always open
 
-  const tz = org.timezone ?? "Australia/Sydney";
+  const tz = org.timezone ?? env.DEFAULT_TIMEZONE;
   const now = new Date();
 
   // Get current day and time in org's timezone
@@ -314,7 +318,15 @@ const telephonyRoutes: FastifyPluginAsync = async (fastify) => {
   });
   // POST /webhooks/telephony/whatsapp-status - WhatsApp message status
   fastify.post("/whatsapp-status", async (request, reply) => {
+    const signature = (request.headers["x-twilio-signature"] as string) ?? "";
+    const fullUrl = `${env.API_BASE_URL}${request.url}`;
     const payload = request.body as Record<string, string>;
+
+    if (!verifyTwilioSignature(fullUrl, payload, signature)) {
+      logger.warn("WhatsApp status webhook signature verification failed");
+      return reply.status(403).send({ error: "Invalid signature" });
+    }
+
     const messageSid = payload.MessageSid;
     const messageStatus = payload.MessageStatus;
 

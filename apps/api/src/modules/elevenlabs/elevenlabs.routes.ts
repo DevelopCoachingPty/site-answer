@@ -122,12 +122,23 @@ const RecordPaymentOutcomeBody = Type.Intersect([
   }),
 ]);
 
-// Helper to resolve org from agent_id
+// Helper to resolve org from agent_id — validates the org exists and is active.
+// These endpoints are called by ElevenLabs (not users), so agent_id is the auth.
 async function getOrgFromAgent(agentId: string) {
-  return orgService.getOrganisationByAgentId(agentId);
+  const org = await orgService.getOrganisationByAgentId(agentId);
+  if (org && !org.is_active) {
+    logger.warn({ agentId, orgId: org.id }, "Tool call rejected: organisation is inactive");
+    return null;
+  }
+  return org;
 }
 
 const elevenlabsRoutes: FastifyPluginAsync = async (fastify) => {
+  // Stricter rate limit for webhook/tool endpoints (30 req/min per IP)
+  await fastify.register(import("@fastify/rate-limit"), {
+    max: 30,
+    timeWindow: "1 minute",
+  });
   // POST /webhooks/elevenlabs/post-call
   fastify.post("/post-call", async (request, reply) => {
     const payload = request.body as Record<string, unknown>;

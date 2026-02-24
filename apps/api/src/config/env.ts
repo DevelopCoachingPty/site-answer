@@ -44,8 +44,8 @@ const envSchema = z.object({
   MS_CLIENT_SECRET: z.string().optional(),
   MS_REDIRECT_URI: z.string().url().optional(),
 
-  // Encryption
-  ENCRYPTION_KEY: z.string().min(32).optional(),
+  // Encryption (required in production to protect OAuth tokens)
+  ENCRYPTION_KEY: z.string().min(64, "ENCRYPTION_KEY must be a 32-byte hex string (64 chars)"),
 
   // Twilio
   TWILIO_ACCOUNT_SID: z.string().optional(),
@@ -53,11 +53,19 @@ const envSchema = z.object({
   TWILIO_PHONE_NUMBER: z.string().optional(),
   TWILIO_WHATSAPP_NUMBER: z.string().optional(),
 
-  // Sentry
-  SENTRY_DSN: z.string().optional(),
-
   // Frontend URL
   FRONTEND_URL: z.string().url().default("http://localhost:3000"),
+
+  // Pricing (per minute rates)
+  ELEVENLABS_COST_PER_MIN: z.coerce.number().default(0.08),
+  REBILL_RATE_PER_MIN: z.coerce.number().default(0.16),
+
+  // Default timezone (used when org.timezone is not set)
+  DEFAULT_TIMEZONE: z.string().default("Australia/Sydney"),
+
+  // Worker schedules
+  CHASE_SCHEDULER_INTERVAL_MS: z.coerce.number().default(5 * 60 * 1000), // 5 minutes
+  STATS_AGGREGATION_CRON: z.string().default("0 2 * * *"), // 2am daily
 
   // Alerts
   ALERT_EMAIL: z.string().email().optional(),

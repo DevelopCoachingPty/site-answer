@@ -5,6 +5,12 @@ import { api } from "@/lib/api-client";
 import { useApi } from "@/hooks/use-api";
 import { useToast } from "@/components/toast";
 
+interface DayHours {
+  enabled: boolean;
+  start: string;
+  end: string;
+}
+
 interface Organisation {
   id: string;
   name: string;
@@ -12,13 +18,25 @@ interface Organisation {
   greeting_name: string | null;
   phone_number: string | null;
   timezone: string | null;
-  business_hours: Record<string, unknown> | null;
+  business_hours: Record<string, DayHours> | null;
   after_hours_action: string | null;
   escalation_phone: string | null;
   escalation_sms: boolean;
   ghl_connected: boolean;
   calendar_connected: boolean;
 }
+
+const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
+
+const DEFAULT_HOURS: Record<string, DayHours> = {
+  monday: { enabled: true, start: "07:00", end: "17:00" },
+  tuesday: { enabled: true, start: "07:00", end: "17:00" },
+  wednesday: { enabled: true, start: "07:00", end: "17:00" },
+  thursday: { enabled: true, start: "07:00", end: "17:00" },
+  friday: { enabled: true, start: "07:00", end: "17:00" },
+  saturday: { enabled: false, start: "08:00", end: "12:00" },
+  sunday: { enabled: false, start: "08:00", end: "12:00" },
+};
 
 interface AccountingStatus {
   connected: boolean;
@@ -47,6 +65,7 @@ export default function SettingsPage() {
     after_hours_action: "voicemail",
     whatsapp_enabled: false,
     whatsapp_phone_number: "",
+    business_hours: DEFAULT_HOURS as Record<string, DayHours>,
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -65,6 +84,7 @@ export default function SettingsPage() {
         after_hours_action: org.after_hours_action ?? "voicemail",
         whatsapp_enabled: (org as unknown as Record<string, unknown>).whatsapp_enabled as boolean ?? false,
         whatsapp_phone_number: (org as unknown as Record<string, unknown>).whatsapp_phone_number as string ?? "",
+        business_hours: (org.business_hours ?? DEFAULT_HOURS) as Record<string, DayHours>,
       });
     }
   }, [data]);
@@ -180,7 +200,65 @@ export default function SettingsPage() {
           <p className="text-sm text-[var(--muted-foreground)] mb-4">
             Set when calls should be handled with the standard greeting vs. the after-hours script.
           </p>
-          <p className="text-sm text-[var(--muted-foreground)]">Business hours editor coming in a future update.</p>
+          <div className="space-y-2">
+            {DAYS.map((day) => {
+              const hours = form.business_hours[day] ?? { enabled: false, start: "07:00", end: "17:00" };
+              return (
+                <div key={day} className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={hours.enabled}
+                    onChange={(e) => {
+                      setForm({
+                        ...form,
+                        business_hours: {
+                          ...form.business_hours,
+                          [day]: { ...hours, enabled: e.target.checked },
+                        },
+                      });
+                    }}
+                    className="shrink-0"
+                  />
+                  <span className="w-24 text-sm capitalize">{day}</span>
+                  {hours.enabled ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="time"
+                        value={hours.start}
+                        onChange={(e) => {
+                          setForm({
+                            ...form,
+                            business_hours: {
+                              ...form.business_hours,
+                              [day]: { ...hours, start: e.target.value },
+                            },
+                          });
+                        }}
+                        className="rounded-lg border border-[var(--input)] bg-[var(--background)] px-2 py-1 text-sm"
+                      />
+                      <span className="text-sm text-[var(--muted-foreground)]">to</span>
+                      <input
+                        type="time"
+                        value={hours.end}
+                        onChange={(e) => {
+                          setForm({
+                            ...form,
+                            business_hours: {
+                              ...form.business_hours,
+                              [day]: { ...hours, end: e.target.value },
+                            },
+                          });
+                        }}
+                        className="rounded-lg border border-[var(--input)] bg-[var(--background)] px-2 py-1 text-sm"
+                      />
+                    </div>
+                  ) : (
+                    <span className="text-sm text-[var(--muted-foreground)]">Closed</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </section>
 
         {/* Escalation */}

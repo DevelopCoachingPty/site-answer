@@ -131,11 +131,11 @@ export function startPaymentChaseWorker() {
     },
   );
 
-  // Set up repeatable scheduler job (every 5 minutes)
+  // Set up repeatable scheduler job
   const chaseQueue = getQueue(QUEUE_NAMES.PAYMENT_CHASE);
   chaseQueue.add("chase-scheduler", {}, {
     repeat: {
-      every: 5 * 60 * 1000, // 5 minutes
+      every: env.CHASE_SCHEDULER_INTERVAL_MS,
     },
     jobId: "chase-scheduler-repeatable",
   }).catch((err) => {

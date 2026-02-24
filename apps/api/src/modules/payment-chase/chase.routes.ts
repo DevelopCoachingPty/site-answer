@@ -147,6 +147,7 @@ const chaseRoutes: FastifyPluginAsync = async (fastify) => {
   // POST /payment-chase/:id/chase-now - Trigger immediate outbound call
   fastify.post<{ Params: Static<typeof IdParams> }>("/:id/chase-now", {
     schema: { params: IdParams },
+    config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
     handler: async (request, reply) => {
       const item = await chaseService.getChaseItem(
         request.organisationId!,

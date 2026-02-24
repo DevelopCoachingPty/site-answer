@@ -327,15 +327,25 @@ export default function OnboardingPage() {
         <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
           <h2 className="font-semibold mb-1">{steps[3]!.title}</h2>
           <p className="text-sm text-[var(--muted-foreground)] mb-4">
-            Ready to hear SiteAnswer in action? We&apos;ll call your phone so you can experience
-            what your callers will hear.
+            Ready to hear SiteAnswer in action? Call your SiteAnswer number from your phone
+            to experience what your callers will hear.
           </p>
 
           <div className="rounded-lg bg-[var(--muted)] p-6 text-center">
-            <p className="text-sm text-[var(--muted-foreground)] mb-4">
-              Test calls will be available once your phone number is configured.
-              For now, you&apos;re all set up!
-            </p>
+            {authData?.data?.organisation?.phone_number ? (
+              <>
+                <p className="text-sm font-medium mb-2">Your SiteAnswer number:</p>
+                <p className="text-2xl font-bold mb-3">{authData.data.organisation.phone_number}</p>
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  Call this number from your phone to test the AI receptionist.
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-[var(--muted-foreground)]">
+                A phone number will be assigned to your account after setup is complete.
+                You can test calls from the Dashboard once it&apos;s configured.
+              </p>
+            )}
           </div>
 
           <div className="flex justify-between mt-6">

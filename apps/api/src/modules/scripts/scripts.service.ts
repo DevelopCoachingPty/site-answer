@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "../../lib/supabase.js";
-import { NotFoundError } from "../../lib/errors.js";
+import { AppError, NotFoundError } from "../../lib/errors.js";
 import { getQueue } from "../../lib/queue.js";
 import { QUEUE_NAMES } from "../../config/constants.js";
 import { logger } from "../../lib/logger.js";
@@ -13,7 +13,7 @@ export async function listScripts(orgId: string) {
     .order("flow_type", { ascending: true });
 
   if (error) {
-    throw new Error(`Failed to list scripts: ${error.message}`);
+    throw new AppError(500, `Failed to list scripts: ${error.message}`, "DB_ERROR");
   }
 
   return data ?? [];
@@ -102,7 +102,7 @@ export async function createScript(orgId: string, input: {
     .single();
 
   if (error) {
-    throw new Error(`Failed to create script: ${error.message}`);
+    throw new AppError(500, `Failed to create script: ${error.message}`, "DB_ERROR");
   }
 
   return data;
@@ -117,7 +117,7 @@ export async function getScriptVersionHistory(orgId: string, flowType: string) {
     .order("version", { ascending: false });
 
   if (error) {
-    throw new Error(`Failed to get version history: ${error.message}`);
+    throw new AppError(500, `Failed to get version history: ${error.message}`, "DB_ERROR");
   }
 
   return data ?? [];
@@ -148,7 +148,7 @@ export async function publishScript(orgId: string, scriptId: string, userId: str
     .single();
 
   if (error) {
-    throw new Error(`Failed to publish script: ${error.message}`);
+    throw new AppError(500, `Failed to publish script: ${error.message}`, "DB_ERROR");
   }
 
   // Queue agent sync

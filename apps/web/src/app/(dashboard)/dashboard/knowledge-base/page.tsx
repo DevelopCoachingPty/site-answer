@@ -47,7 +47,7 @@ export default function KnowledgeBasePage() {
       });
       setEntries(result.data ?? []);
     } catch {
-      // Will show empty state
+      toast("Failed to load entries. Please try again.", "error");
     } finally {
       setLoading(false);
     }

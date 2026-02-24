@@ -6,7 +6,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1";
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api/v1";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -45,7 +45,7 @@ export default function RegisterPage() {
 
       // 2. Setup user profile and organisation via API
       if (data.session) {
-        await fetch(`${API_BASE_URL}/auth/setup-profile`, {
+        const profileRes = await fetch(`${API_BASE_URL}/auth/setup-profile`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${data.session.access_token}`,
@@ -56,6 +56,13 @@ export default function RegisterPage() {
             company_name: companyName,
           }),
         });
+
+        if (!profileRes.ok) {
+          const errBody = await profileRes.json().catch(() => ({}));
+          setError(errBody.message || "Account created but profile setup failed. Please contact support.");
+          setLoading(false);
+          return;
+        }
       }
 
       router.push("/dashboard");

@@ -20,9 +20,12 @@ export async function listChaseItems(orgId: string, filters: ChaseFilters) {
     query = query.eq("status", filters.status);
   }
   if (filters.search) {
-    query = query.or(
-      `contact_name.ilike.%${filters.search}%,contact_phone.ilike.%${filters.search}%,invoice_reference.ilike.%${filters.search}%`,
-    );
+    const s = filters.search.replace(/[%_\\(),."]/g, "");
+    if (s) {
+      query = query.or(
+        `contact_name.ilike.%${s}%,contact_phone.ilike.%${s}%,invoice_reference.ilike.%${s}%`,
+      );
+    }
   }
   if (filters.date_from) {
     query = query.gte("created_at", filters.date_from);

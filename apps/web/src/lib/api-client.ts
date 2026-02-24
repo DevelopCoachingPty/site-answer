@@ -1,7 +1,9 @@
 import { createClient } from "@/lib/supabase/client";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+if (!API_BASE_URL) {
+  throw new Error("NEXT_PUBLIC_API_URL environment variable is not set");
+}
 
 interface FetchOptions extends RequestInit {
   params?: Record<string, string | number | undefined>;
@@ -43,13 +45,17 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<T> 
   const headers = await getAuthHeaders();
   const url = buildUrl(path, params);
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000); // 30s timeout
+
   const response = await fetch(url, {
     ...fetchOptions,
+    signal: controller.signal,
     headers: {
       ...headers,
       ...fetchOptions.headers,
     },
-  });
+  }).finally(() => clearTimeout(timeout));
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({

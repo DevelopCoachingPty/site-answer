@@ -8,6 +8,7 @@ vi.stubEnv("REDIS_URL", "redis://localhost:6379");
 vi.stubEnv("FRONTEND_URL", "http://localhost:3000");
 vi.stubEnv("NODE_ENV", "development");
 vi.stubEnv("LOG_LEVEL", "fatal");
+vi.stubEnv("ENCRYPTION_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
 
 // Mock Supabase admin client
 vi.mock("../lib/supabase.js", () => {

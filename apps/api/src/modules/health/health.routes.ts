@@ -3,6 +3,7 @@ import { Queue } from "bullmq";
 import { supabaseAdmin } from "../../lib/supabase.js";
 import { getActiveSessionCount } from "../telephony/audio-bridge.js";
 import { env } from "../../config/env.js";
+import { getMetrics } from "../../lib/metrics.js";
 
 const healthRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get("/", async (_request, reply) => {
@@ -37,6 +38,11 @@ const healthRoutes: FastifyPluginAsync = async (fastify) => {
       services: checks,
       activeCalls: getActiveSessionCount(),
     });
+  });
+
+  // GET /health/metrics - Application metrics
+  fastify.get("/metrics", async (_request, reply) => {
+    return reply.send(getMetrics());
   });
 };
 

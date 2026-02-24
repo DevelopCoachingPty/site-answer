@@ -6,6 +6,7 @@ import { env } from "./config/env.js";
 import { API_PREFIX } from "./config/constants.js";
 import authPlugin from "./plugins/auth.js";
 import errorHandlerPlugin from "./plugins/error-handler.js";
+import { recordRequest } from "./lib/metrics.js";
 
 // Module routes
 import healthRoutes from "./modules/health/health.routes.js";
@@ -35,6 +36,7 @@ export async function buildServer() {
           : undefined,
     },
     genReqId: () => crypto.randomUUID(),
+    bodyLimit: 1_048_576, // 1 MB
   });
 
   // --- Plugins ---
@@ -54,6 +56,13 @@ export async function buildServer() {
 
   await app.register(errorHandlerPlugin);
   await app.register(authPlugin);
+
+  // Request metrics hook
+  app.addHook("onResponse", (request, reply, done) => {
+    const duration = reply.elapsedTime;
+    recordRequest(request.method, request.url.split("?")[0]!, reply.statusCode, duration);
+    done();
+  });
 
   // --- Routes ---
   // Health check (no auth)

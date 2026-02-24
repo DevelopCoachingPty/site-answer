@@ -24,9 +24,13 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-COPY --from=builder /app/apps/api/dist ./dist
-COPY --from=builder /app/apps/api/package.json ./
-COPY --from=builder /app/node_modules ./node_modules
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 apiuser
 
+COPY --from=builder --chown=apiuser:nodejs /app/apps/api/dist ./dist
+COPY --from=builder --chown=apiuser:nodejs /app/apps/api/package.json ./
+COPY --from=builder --chown=apiuser:nodejs /app/node_modules ./node_modules
+
+USER apiuser
 EXPOSE 3001
 CMD ["node", "dist/index.js"]

@@ -56,12 +56,8 @@ ALTER TABLE whatsapp_messages ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Org members manage whatsapp_templates"
   ON whatsapp_templates FOR ALL
-  USING (organisation_id IN (
-    SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid()
-  ));
+  USING (organisation_id = get_user_org_id());
 
 CREATE POLICY "Org members view whatsapp_messages"
   ON whatsapp_messages FOR ALL
-  USING (organisation_id IN (
-    SELECT organisation_id FROM organisation_members WHERE user_id = auth.uid()
-  ));
+  USING (organisation_id = get_user_org_id());

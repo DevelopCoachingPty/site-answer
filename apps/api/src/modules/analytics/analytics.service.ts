@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "../../lib/supabase.js";
+import { AppError } from "../../lib/errors.js";
 
 interface DailyStats {
   stat_date: string;
@@ -24,7 +25,7 @@ export async function getDailyCallStats(orgId: string, from: string, to: string)
     .order("stat_date", { ascending: true });
 
   if (error) {
-    throw new Error(`Failed to get daily stats: ${error.message}`);
+    throw new AppError(500, `Failed to get daily stats: ${error.message}`, "DB_ERROR");
   }
 
   // Gap-fill missing dates

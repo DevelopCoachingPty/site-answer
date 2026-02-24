@@ -52,6 +52,7 @@ const MOCK_ORG = {
   ghl_access_token_encrypted: "enc-token",
   escalation_sms: false,
   escalation_phone: null,
+  is_active: true,
 };
 
 const toolBody = (tool_params: Record<string, unknown>) => ({
