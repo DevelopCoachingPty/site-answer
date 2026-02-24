@@ -48,6 +48,7 @@ CREATE POLICY "Admins can view all chase items"
     ON payment_chase_queue FOR SELECT
     USING (is_platform_admin());
 
--- Updated_at trigger
+-- Updated_at trigger (skip if already created in initial schema)
+DROP TRIGGER IF EXISTS set_updated_at ON payment_chase_queue;
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON payment_chase_queue
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();

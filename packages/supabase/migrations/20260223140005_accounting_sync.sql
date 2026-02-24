@@ -5,7 +5,7 @@
 
 -- Sync history log
 CREATE TABLE accounting_sync_log (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
     provider TEXT NOT NULL CHECK (provider IN ('xero', 'quickbooks')),
     sync_type TEXT NOT NULL DEFAULT 'overdue_invoices' CHECK (sync_type IN ('overdue_invoices', 'full', 'manual')),

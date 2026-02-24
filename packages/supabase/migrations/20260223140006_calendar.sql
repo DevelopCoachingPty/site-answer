@@ -10,7 +10,7 @@ ALTER TABLE organisations
 
 -- Appointments table
 CREATE TABLE appointments (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
     call_id UUID REFERENCES calls(id),
     external_event_id TEXT,

@@ -10,7 +10,7 @@ ALTER TABLE conversation_scripts
 
 -- Pre-computed daily call stats for analytics
 CREATE TABLE call_daily_stats (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
     stat_date DATE NOT NULL,
     total_calls INTEGER DEFAULT 0,

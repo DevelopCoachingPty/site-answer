@@ -1,6 +1,5 @@
 -- SiteAnswer Initial Schema
--- Enable required extensions
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- gen_random_uuid() is built-in on Postgres 13+; pgcrypto for crypt/gen_salt
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ============================================================
@@ -8,7 +7,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- The builder's business account (one per coaching member)
 -- ============================================================
 CREATE TABLE organisations (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     slug TEXT UNIQUE NOT NULL,
     owner_user_id UUID NOT NULL REFERENCES auth.users(id),
@@ -71,7 +70,7 @@ CREATE TABLE organisations (
 CREATE TABLE users (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     organisation_id UUID REFERENCES organisations(id) ON DELETE CASCADE,
-    role TEXT DEFAULT 'member' CHECK (role IN ('admin', 'member', 'viewer')),
+    role TEXT DEFAULT 'member' CHECK (role IN ('owner', 'admin', 'member', 'viewer')),
     full_name TEXT,
     email TEXT NOT NULL,
     phone TEXT,
@@ -85,7 +84,7 @@ CREATE TABLE users (
 -- Company-specific information the AI uses to answer questions
 -- ============================================================
 CREATE TABLE knowledge_base (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
     category TEXT NOT NULL CHECK (category IN (
         'services', 'pricing', 'faq', 'process', 'team', 'area_coverage', 'policies'
@@ -104,7 +103,7 @@ CREATE TABLE knowledge_base (
 -- Configurable conversation flows and prompts
 -- ============================================================
 CREATE TABLE conversation_scripts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
     flow_type TEXT NOT NULL CHECK (flow_type IN (
         'new_inquiry', 'existing_client', 'payment_query',
@@ -126,7 +125,7 @@ CREATE TABLE conversation_scripts (
 -- Every call that SiteAnswer handles
 -- ============================================================
 CREATE TABLE calls (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
 
     -- Call metadata
@@ -181,7 +180,7 @@ CREATE TABLE calls (
 -- Discrete actions taken during or after a call
 -- ============================================================
 CREATE TABLE call_actions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     call_id UUID NOT NULL REFERENCES calls(id) ON DELETE CASCADE,
     organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
 
@@ -207,7 +206,7 @@ CREATE TABLE call_actions (
 -- PAYMENT CHASE QUEUE (Phase 2)
 -- ============================================================
 CREATE TABLE payment_chase_queue (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
     ghl_contact_id TEXT NOT NULL,
     contact_name TEXT NOT NULL,
@@ -233,7 +232,7 @@ CREATE TABLE payment_chase_queue (
 -- Track costs per organisation for monitoring and alerts
 -- ============================================================
 CREATE TABLE usage_tracking (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
     period_start DATE NOT NULL,
     period_end DATE NOT NULL,
@@ -255,7 +254,7 @@ CREATE TABLE usage_tracking (
 -- WEBHOOK EVENTS (for idempotency and debugging)
 -- ============================================================
 CREATE TABLE webhook_events (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     source TEXT NOT NULL,
     event_type TEXT NOT NULL,
     event_id TEXT NOT NULL,
@@ -271,7 +270,7 @@ CREATE TABLE webhook_events (
 -- NOTIFICATIONS (in-app alerts)
 -- ============================================================
 CREATE TABLE notifications (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organisation_id UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
     user_id UUID REFERENCES auth.users(id),
     type TEXT NOT NULL,
