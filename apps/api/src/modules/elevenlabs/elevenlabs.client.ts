@@ -4,6 +4,7 @@ import { ExternalServiceError } from "../../lib/errors.js";
 import { supabaseAdmin } from "../../lib/supabase.js";
 import * as kbService from "../knowledge-base/kb.service.js";
 import * as scriptsService from "../scripts/scripts.service.js";
+import { buildScreeningPromptSection } from "../screening/screening.service.js";
 
 const ELEVENLABS_API_BASE = "https://api.elevenlabs.io/v1";
 
@@ -114,8 +115,11 @@ export async function buildSystemPrompt(orgId: string): Promise<string> {
     throw new Error(`Organisation ${orgId} not found`);
   }
 
-  // Get active knowledge base entries
-  const kbEntries = await kbService.getActiveKnowledgeBase(orgId);
+  const builderName = org.builder_name ?? "the owner";
+
+  // Get active knowledge base entries (exclude screening categories — handled separately)
+  const kbEntries = (await kbService.getActiveKnowledgeBase(orgId))
+    .filter((e) => !e.category.startsWith("screening_"));
 
   // Get active scripts
   const scripts = await scriptsService.listScripts(orgId);
@@ -139,8 +143,11 @@ export async function buildSystemPrompt(orgId: string): Promise<string> {
     .map((s) => `- **${s.name}** (${s.flow_type}): ${s.system_prompt.slice(0, 100)}...`)
     .join("\n");
 
+  // Build screening / gatekeeper section from KB
+  const screeningSection = await buildScreeningPromptSection(orgId, builderName);
+
   return `You are a professional office manager AI answering calls for ${org.name}.
-Builder: ${org.builder_name ?? "the owner"}
+Builder: ${builderName}
 ${org.greeting_name ? `Refer to the business as: ${org.greeting_name}` : ""}
 Phone: ${org.phone_number ?? "not set"}
 Timezone: ${org.timezone ?? env.DEFAULT_TIMEZONE}
@@ -161,7 +168,7 @@ ${scriptRefs || "Default scripts are in use."}
 
 # TOOLS AVAILABLE
 You have access to these tools to help callers:
-- **lookup_caller**: Look up a caller by phone number in the CRM
+- **lookup_caller**: Look up a caller by phone number in the CRM (also returns screening info — VIP/blocked status)
 - **create_new_contact**: Create a new contact in the CRM
 - **check_calendar**: Check available appointment slots
 - **book_appointment**: Book an appointment for the caller
@@ -170,6 +177,7 @@ You have access to these tools to help callers:
 - **get_knowledge**: Search the knowledge base for specific information
 - **log_message**: Log a message for callback
 - **send_whatsapp**: Send a WhatsApp confirmation message to the caller
+- **tag_call_outcome**: Tag the call with the screening outcome (use at end of every call)
 
 # EMERGENCY KEYWORDS
 If the caller mentions: flood, leak, collapse, fire, structural, dangerous, urgent, emergency, gas, electric
@@ -180,13 +188,19 @@ When you use escalate_to_builder and the response includes "warm_transfer": true
 immediately tell the caller the message provided in the response. Then stop talking
 completely — the system will handle the transfer. Do NOT continue the conversation.
 
+---
+${screeningSection}
+---
+
 # RULES
 1. Be warm, professional, and efficient
 2. Never make commitments on pricing or timelines
 3. Always get caller name and number
 4. Use knowledge base to answer questions about the business
 5. If unsure, take a message and offer a callback
-6. Log all important information for the builder`;
+6. Log all important information for the builder
+7. Screen every call — protect ${builderName}'s time
+8. At the END of every call, use tag_call_outcome to record the screening result`;
 }
 
 // --- Tool Configs ---
@@ -343,6 +357,24 @@ function buildToolConfigs(baseUrl: string) {
           notes: { type: "string", description: "Additional notes about the conversation" },
         },
         required: ["chase_item_id", "outcome"],
+      },
+    },
+    {
+      type: "webhook",
+      name: "tag_call_outcome",
+      description: "Tag the call with the screening outcome. Use at the end of every call to record how it was handled.",
+      webhook: { url: `${baseUrl}/tools/tag_call_outcome`, method: "POST" },
+      parameters: {
+        type: "object",
+        properties: {
+          outcome: {
+            type: "string",
+            description: "The screening outcome: transferred, handled, callback_booked, message_taken, sales_blocked, recruiter_blocked, vip_transferred",
+          },
+          contact_id: { type: "string", description: "GHL contact ID if known" },
+          notes: { type: "string", description: "Brief notes about the call outcome" },
+        },
+        required: ["outcome"],
       },
     },
   ];

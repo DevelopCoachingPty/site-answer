@@ -81,6 +81,12 @@ async function processPostCall(job: Job<PostCallJob>) {
     updates.duration_seconds = duration_seconds;
   }
 
+  // Extract screening outcome from tool calls if present
+  const screeningToolCall = tool_calls?.find((tc) => tc.tool_name === "tag_call_outcome");
+  if (screeningToolCall) {
+    updates.screening_outcome = screeningToolCall.parameters.outcome;
+  }
+
   await callsService.updateCall(call.id, updates);
 
   // 2. Process tool calls into call_actions

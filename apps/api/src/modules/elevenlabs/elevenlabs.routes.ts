@@ -7,6 +7,7 @@ import * as ghlClient from "../ghl/ghl.client.js";
 import * as chaseService from "../payment-chase/chase.service.js";
 import * as calendarService from "../calendar/calendar.service.js";
 import * as whatsappService from "../whatsapp/whatsapp.service.js";
+import * as screeningService from "../screening/screening.service.js";
 import { supabaseAdmin } from "../../lib/supabase.js";
 import { getQueue } from "../../lib/queue.js";
 import { QUEUE_NAMES, WARM_TRANSFER } from "../../config/constants.js";
@@ -131,6 +132,17 @@ const RecordPaymentOutcomeBody = Type.Intersect([
   }),
 ]);
 
+const TagCallOutcomeBody = Type.Intersect([
+  ToolCallBase,
+  Type.Object({
+    parameters: Type.Object({
+      outcome: Type.String(), // transferred, handled, callback_booked, message_taken, sales_blocked, recruiter_blocked, vip_transferred
+      contact_id: Type.Optional(Type.String()),
+      notes: Type.Optional(Type.String()),
+    }),
+  }),
+]);
+
 // Helper to resolve org from agent_id — validates the org exists and is active.
 // These endpoints are called by ElevenLabs (not users), so agent_id is the auth.
 async function getOrgFromAgent(agentId: string) {
@@ -167,7 +179,7 @@ const elevenlabsRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.send({ status: "received" });
   });
 
-  // Tool: lookup_caller
+  // Tool: lookup_caller (enriched with screening data)
   fastify.post<{ Body: Static<typeof LookupCallerBody> }>("/tools/lookup_caller", {
     schema: { body: LookupCallerBody },
     handler: async (request, reply) => {
@@ -176,27 +188,55 @@ const elevenlabsRoutes: FastifyPluginAsync = async (fastify) => {
 
       const org = await getOrgFromAgent(agent_id);
       if (!org) {
-        return reply.send({ found: false, type: "new_inquiry" });
+        return reply.send({ found: false, type: "new_inquiry", screening: { is_vip: false, is_blocked: false, classification: "unknown", recommendation: "take_message" } });
       }
+
+      let contact: Record<string, unknown> | null = null;
 
       try {
         if (org.ghl_location_id && org.ghl_access_token_encrypted) {
-          const contact = await ghlClient.lookupContact(org.id, org.ghl_location_id, parameters.phone_number);
-          if (contact) {
-            return reply.send({
-              found: true,
-              contact_id: contact.id,
-              name: contact.name ?? contact.firstName,
-              type: "existing_client",
-              tags: contact.tags,
-            });
-          }
+          contact = await ghlClient.lookupContact(org.id, org.ghl_location_id, parameters.phone_number);
         }
       } catch (err) {
         logger.warn({ err, orgId: org.id }, "GHL lookup failed, treating as new");
       }
 
-      return reply.send({ found: false, type: "new_inquiry" });
+      // Run screening classification
+      const screening = await screeningService.classifyCaller(
+        org.id,
+        contact as { id?: string; name?: string; firstName?: string; tags?: string[] } | null,
+        parameters.phone_number,
+      );
+
+      if (contact) {
+        return reply.send({
+          found: true,
+          contact_id: contact.id,
+          name: contact.name ?? contact.firstName,
+          type: screening.classification === "vip" ? "vip" : "existing_client",
+          tags: contact.tags,
+          screening: {
+            is_vip: screening.is_vip,
+            is_blocked: screening.is_blocked,
+            classification: screening.classification,
+            recommendation: screening.recommendation,
+            vip_note: screening.vip_note,
+            blocked_reason: screening.blocked_reason,
+          },
+        });
+      }
+
+      return reply.send({
+        found: false,
+        type: "new_inquiry",
+        screening: {
+          is_vip: screening.is_vip,
+          is_blocked: screening.is_blocked,
+          classification: screening.classification,
+          recommendation: screening.recommendation,
+          blocked_reason: screening.blocked_reason,
+        },
+      });
     },
   });
 
@@ -604,6 +644,99 @@ const elevenlabsRoutes: FastifyPluginAsync = async (fastify) => {
       } catch (err) {
         logger.error({ err, chaseItemId: parameters.chase_item_id }, "Failed to record payment outcome");
         return reply.send({ success: false, reason: "Failed to update chase item" });
+      }
+    },
+  });
+
+  // Tool: tag_call_outcome (screening outcome tagging)
+  fastify.post<{ Body: Static<typeof TagCallOutcomeBody> }>("/tools/tag_call_outcome", {
+    schema: { body: TagCallOutcomeBody },
+    handler: async (request, reply) => {
+      const { agent_id, conversation_id, parameters } = request.body;
+      logger.info({ agentId: agent_id, outcome: parameters.outcome }, "Tool: tag_call_outcome");
+
+      const org = await getOrgFromAgent(agent_id);
+      if (!org) {
+        return reply.send({ success: false, reason: "Organisation not found" });
+      }
+
+      const validOutcomes = [
+        "transferred", "handled", "callback_booked", "message_taken",
+        "sales_blocked", "recruiter_blocked", "vip_transferred",
+      ];
+
+      if (!validOutcomes.includes(parameters.outcome)) {
+        return reply.send({ success: false, reason: `Invalid outcome. Must be one of: ${validOutcomes.join(", ")}` });
+      }
+
+      // Map outcome to GHL tag
+      const GHL_TAG_MAP: Record<string, string> = {
+        transferred: "siteanswer-transferred",
+        handled: "siteanswer-handled",
+        callback_booked: "siteanswer-callback-booked",
+        message_taken: "siteanswer-message-taken",
+        sales_blocked: "siteanswer-sales-blocked",
+        recruiter_blocked: "siteanswer-recruiter-blocked",
+        vip_transferred: "siteanswer-vip",
+      };
+
+      try {
+        // Find the call record by conversation_id or agent_id session
+        const session = findSessionByAgentId(agent_id);
+        const callId = session?.callId;
+
+        if (callId) {
+          // Update call record with screening outcome
+          await callsService.updateCall(callId, {
+            screening_outcome: parameters.outcome,
+          });
+
+          // Log the action
+          await callsService.createCallAction({
+            call_id: callId,
+            organisation_id: org.id,
+            action_type: "tag_call_outcome",
+            payload: {
+              outcome: parameters.outcome,
+              contact_id: parameters.contact_id,
+              notes: parameters.notes,
+              ghl_tag: GHL_TAG_MAP[parameters.outcome],
+            },
+          });
+        }
+
+        // Queue GHL tag addition if contact_id is provided
+        if (parameters.contact_id && org.ghl_access_token_encrypted) {
+          try {
+            const ghlQueue = getQueue(QUEUE_NAMES.GHL_SYNC);
+            await ghlQueue.add("tag-contact", {
+              organisationId: org.id,
+              callId: callId ?? "",
+              actions: [{
+                type: "tag_contact",
+                data: {
+                  contact_id: parameters.contact_id,
+                  tag: GHL_TAG_MAP[parameters.outcome] ?? `siteanswer-${parameters.outcome}`,
+                  notes: parameters.notes,
+                },
+              }],
+            }, {
+              attempts: 3,
+              backoff: { type: "exponential", delay: 5000 },
+            });
+          } catch (err) {
+            logger.warn({ err, orgId: org.id }, "Failed to queue GHL tag sync");
+          }
+        }
+
+        return reply.send({
+          success: true,
+          outcome: parameters.outcome,
+          tag_applied: GHL_TAG_MAP[parameters.outcome],
+        });
+      } catch (err) {
+        logger.error({ err, orgId: org.id }, "Failed to tag call outcome");
+        return reply.send({ success: false, reason: "Failed to tag outcome" });
       }
     },
   });

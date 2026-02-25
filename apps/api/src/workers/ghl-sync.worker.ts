@@ -78,6 +78,45 @@ async function processGhlSync(job: Job<GhlSyncJob>) {
           break;
         }
 
+        case "tag_contact": {
+          const contactId = action.data.contact_id as string | undefined;
+          const tag = action.data.tag as string | undefined;
+          const notes = action.data.notes as string | undefined;
+
+          if (contactId && tag) {
+            await ghlClient.addContactTag(organisationId, contactId, [tag]);
+            log.info({ contactId, tag }, "GHL tag applied");
+
+            if (notes) {
+              await ghlClient.addContactNote(
+                organisationId,
+                contactId,
+                `SiteAnswer screening: ${tag}\n${notes}`,
+              );
+            }
+          }
+          break;
+        }
+
+        case "tag_call_outcome": {
+          // Tag the contact with the screening outcome
+          const outcomeContactId = action.data.contact_id as string | undefined;
+          const outcomeTag = action.data.ghl_tag as string | undefined;
+
+          if (outcomeContactId && outcomeTag) {
+            await ghlClient.addContactTag(organisationId, outcomeContactId, [outcomeTag]);
+
+            // Add a note with call summary
+            const noteText = `SiteAnswer call outcome: ${action.data.outcome ?? outcomeTag}\n${
+              call.summary ? `Summary: ${call.summary}` : ""
+            }\nDuration: ${call.duration_seconds ?? 0}s`;
+
+            await ghlClient.addContactNote(organisationId, outcomeContactId, noteText);
+            log.info({ contactId: outcomeContactId, tag: outcomeTag }, "Screening outcome tagged in GHL");
+          }
+          break;
+        }
+
         default:
           log.debug({ actionType: action.type }, "No GHL sync action for this type");
       }
