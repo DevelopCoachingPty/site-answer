@@ -89,6 +89,30 @@ function pcm16ToMulaw(pcm16Base64: string): string {
   return mulawBytes.toString("base64");
 }
 
+export type WarmTransferStatus =
+  | "pending"
+  | "handoff_speaking"
+  | "caller_in_conference"
+  | "builder_ringing"
+  | "builder_joined"
+  | "builder_no_answer"
+  | "completed"
+  | "failed";
+
+export interface WarmTransferState {
+  conferenceRoom: string;
+  builderPhone: string;
+  builderCallSid: string | null;
+  callerName: string;
+  callerNumber: string;
+  reason: string;
+  urgencyLevel: string;
+  handoffTimerId: ReturnType<typeof setTimeout> | null;
+  builderTimeoutId: ReturnType<typeof setTimeout> | null;
+  builderJoined: boolean;
+  status: WarmTransferStatus;
+}
+
 interface BridgeSession {
   callSid: string;
   callId: string;
@@ -99,6 +123,7 @@ interface BridgeSession {
   elevenLabsWs: WebSocket | null;
   startedAt: Date;
   streamSid: string | null;
+  warmTransfer: WarmTransferState | null;
 }
 
 // Active bridge sessions indexed by callId
@@ -125,9 +150,60 @@ export function createSession(params: {
     elevenLabsWs: null,
     startedAt: new Date(),
     streamSid: null,
+    warmTransfer: null,
   };
   activeSessions.set(params.callId, session);
   return session;
+}
+
+// --- Session lookup helpers ---
+
+/** Find session by ElevenLabs agent ID (used by tool call webhooks) */
+export function findSessionByAgentId(agentId: string): BridgeSession | undefined {
+  for (const session of activeSessions.values()) {
+    if (session.agentId === agentId) {
+      return session;
+    }
+  }
+  return undefined;
+}
+
+/** Find session by conference room name (used by conference status webhook) */
+export function findSessionByConferenceRoom(room: string): BridgeSession | undefined {
+  for (const session of activeSessions.values()) {
+    if (session.warmTransfer?.conferenceRoom === room) {
+      return session;
+    }
+  }
+  return undefined;
+}
+
+/** Find session by builder's outbound call SID */
+export function findSessionByBuilderCallSid(builderCallSid: string): BridgeSession | undefined {
+  for (const session of activeSessions.values()) {
+    if (session.warmTransfer?.builderCallSid === builderCallSid) {
+      return session;
+    }
+  }
+  return undefined;
+}
+
+/** Mark a session as pending warm transfer */
+export function markWarmTransferPending(
+  callId: string,
+  state: Pick<WarmTransferState, "conferenceRoom" | "builderPhone" | "callerName" | "callerNumber" | "reason" | "urgencyLevel">,
+): void {
+  const session = activeSessions.get(callId);
+  if (!session) return;
+
+  session.warmTransfer = {
+    ...state,
+    builderCallSid: null,
+    handoffTimerId: null,
+    builderTimeoutId: null,
+    builderJoined: false,
+    status: "pending",
+  };
 }
 
 /**
@@ -178,7 +254,10 @@ export function connectToElevenLabs(session: BridgeSession): void {
 
   elWs.on("close", () => {
     log.info("ElevenLabs WebSocket closed");
-    cleanupSession(session.callId);
+    if (!session.warmTransfer) {
+      cleanupSession(session.callId);
+    }
+    // If warm transfer active, don't cleanup — the conference is still live
   });
 
   elWs.on("error", (err) => {
@@ -223,7 +302,19 @@ export function handleTwilioMessage(session: BridgeSession, message: string): vo
 
       case "stop":
         log.info("Twilio stream stopped");
-        cleanupSession(session.callId);
+        if (session.warmTransfer && session.warmTransfer.status !== "failed") {
+          // Warm transfer in progress — the Media Stream ended because we moved
+          // the caller into a Conference. Only close the ElevenLabs WS; the call
+          // leg is still alive in the conference.
+          log.info("Warm transfer active — closing ElevenLabs WS only");
+          if (session.elevenLabsWs?.readyState === WebSocket.OPEN) {
+            session.elevenLabsWs.close();
+          }
+          session.elevenLabsWs = null;
+          session.twilioWs = null;
+        } else {
+          cleanupSession(session.callId);
+        }
         break;
 
       default:
@@ -235,13 +326,44 @@ export function handleTwilioMessage(session: BridgeSession, message: string): vo
 }
 
 /**
- * Clean up a bridge session
+ * Clean up a bridge session.
+ * If a warm transfer is actively in progress (conference live), only closes
+ * WebSocket connections but keeps the session for conference event tracking.
+ * Call `finalCleanup()` once the conference ends.
  */
 export function cleanupSession(callId: string): void {
   const session = activeSessions.get(callId);
   if (!session) return;
 
   const log = logger.child({ callId });
+
+  // Clear any pending warm transfer timers
+  if (session.warmTransfer?.handoffTimerId) {
+    clearTimeout(session.warmTransfer.handoffTimerId);
+    session.warmTransfer.handoffTimerId = null;
+  }
+  if (session.warmTransfer?.builderTimeoutId) {
+    clearTimeout(session.warmTransfer.builderTimeoutId);
+    session.warmTransfer.builderTimeoutId = null;
+  }
+
+  // If conference is live, keep the session for event tracking
+  const conferenceActive =
+    session.warmTransfer &&
+    ["caller_in_conference", "builder_ringing", "builder_joined"].includes(
+      session.warmTransfer.status,
+    );
+
+  if (conferenceActive) {
+    log.info("Cleaning up WebSockets but keeping session for active conference");
+    if (session.elevenLabsWs?.readyState === WebSocket.OPEN) {
+      session.elevenLabsWs.close();
+    }
+    session.elevenLabsWs = null;
+    session.twilioWs = null;
+    return;
+  }
+
   log.info("Cleaning up bridge session");
 
   if (session.elevenLabsWs?.readyState === WebSocket.OPEN) {
@@ -252,6 +374,13 @@ export function cleanupSession(callId: string): void {
     session.twilioWs.close();
   }
 
+  activeSessions.delete(callId);
+}
+
+/** Remove session from memory after conference has ended */
+export function finalCleanup(callId: string): void {
+  const log = logger.child({ callId });
+  log.info("Final cleanup — removing session");
   activeSessions.delete(callId);
 }
 

@@ -175,6 +175,11 @@ You have access to these tools to help callers:
 If the caller mentions: flood, leak, collapse, fire, structural, dangerous, urgent, emergency, gas, electric
 → Immediately use escalate_to_builder tool with urgency_level "emergency"
 
+# WARM TRANSFER
+When you use escalate_to_builder and the response includes "warm_transfer": true,
+immediately tell the caller the message provided in the response. Then stop talking
+completely — the system will handle the transfer. Do NOT continue the conversation.
+
 # RULES
 1. Be warm, professional, and efficient
 2. Never make commitments on pricing or timelines
@@ -265,7 +270,7 @@ function buildToolConfigs(baseUrl: string) {
     {
       type: "webhook",
       name: "escalate_to_builder",
-      description: "Immediately escalate the call to the builder (for urgent/emergency situations)",
+      description: "Immediately escalate the call to the builder. May connect the caller directly via live transfer if enabled, otherwise sends an SMS notification.",
       webhook: { url: `${baseUrl}/tools/escalate_to_builder`, method: "POST" },
       parameters: {
         type: "object",

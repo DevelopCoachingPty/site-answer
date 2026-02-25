@@ -9,7 +9,16 @@ import * as calendarService from "../calendar/calendar.service.js";
 import * as whatsappService from "../whatsapp/whatsapp.service.js";
 import { supabaseAdmin } from "../../lib/supabase.js";
 import { getQueue } from "../../lib/queue.js";
-import { QUEUE_NAMES } from "../../config/constants.js";
+import { QUEUE_NAMES, WARM_TRANSFER } from "../../config/constants.js";
+import {
+  findSessionByAgentId,
+  markWarmTransferPending,
+} from "../telephony/audio-bridge.js";
+import {
+  generateConferenceRoom,
+  initiateWarmTransfer,
+} from "../telephony/warm-transfer.service.js";
+import * as callsService from "../calls/calls.service.js";
 
 // Tool call base schema
 const ToolCallBase = Type.Object({
@@ -355,6 +364,89 @@ const elevenlabsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.send({ success: false });
       }
 
+      // --- Warm transfer path ---
+      if (org.warm_transfer_enabled && org.escalation_phone) {
+        const session = findSessionByAgentId(agent_id);
+
+        if (session?.callSid) {
+          const conferenceRoom = generateConferenceRoom(session.callId);
+          const callerName = parameters.caller_name ?? "A caller";
+          const builderName = org.builder_name ?? "the builder";
+
+          logger.info(
+            { orgId: org.id, callId: session.callId, conference: conferenceRoom },
+            "Initiating warm transfer",
+          );
+
+          // Record the action
+          await callsService.createCallAction({
+            call_id: session.callId,
+            organisation_id: org.id,
+            action_type: "warm_transfer",
+            payload: {
+              reason: parameters.reason,
+              caller_name: callerName,
+              caller_number: parameters.caller_number,
+              urgency_level: parameters.urgency_level ?? "normal",
+              builder_phone: org.escalation_phone,
+              conference_room: conferenceRoom,
+            },
+          });
+
+          // Update call record
+          await callsService.updateCall(session.callId, {
+            warm_transfer_status: "pending",
+            conference_room_name: conferenceRoom,
+            escalation_reason: parameters.reason,
+            escalated_at: new Date().toISOString(),
+          });
+
+          // Mark session for warm transfer
+          markWarmTransferPending(session.callId, {
+            conferenceRoom,
+            builderPhone: org.escalation_phone,
+            callerName,
+            callerNumber: parameters.caller_number,
+            reason: parameters.reason,
+            urgencyLevel: parameters.urgency_level ?? "normal",
+          });
+
+          // After delay (agent says goodbye), move caller into conference
+          if (session.warmTransfer) {
+            session.warmTransfer.status = "handoff_speaking";
+            session.warmTransfer.handoffTimerId = setTimeout(async () => {
+              try {
+                await initiateWarmTransfer({
+                  callId: session.callId,
+                  callSid: session.callSid,
+                  organisationId: org.id,
+                  orgPhoneNumber: org.phone_number ?? "",
+                  builderPhone: org.escalation_phone!,
+                  builderName,
+                  callerName,
+                  callerNumber: parameters.caller_number,
+                  reason: parameters.reason,
+                  urgencyLevel: parameters.urgency_level ?? "normal",
+                  conferenceRoom,
+                });
+              } catch (err) {
+                logger.error({ err, callId: session.callId }, "Warm transfer initiation failed");
+              }
+            }, WARM_TRANSFER.HANDOFF_DELAY_MS);
+          }
+
+          return reply.send({
+            success: true,
+            escalated: true,
+            warm_transfer: true,
+            builder_name: builderName,
+            message: `Tell the caller: "I'm going to connect you directly with ${builderName} now. Please hold for just a moment while I transfer you." Then stop talking.`,
+          });
+        }
+      }
+
+      // --- Fallback: SMS-only escalation ---
+
       // Create notification
       await supabaseAdmin.from("notifications").insert({
         organisation_id: org.id,
@@ -369,30 +461,12 @@ const elevenlabsRoutes: FastifyPluginAsync = async (fastify) => {
           { orgId: org.id, phone: org.escalation_phone },
           "Escalation SMS to builder",
         );
-        // Send escalation SMS via Twilio
         try {
-          const { env: appEnv } = await import("../../config/env.js");
-          const accountSid = appEnv.TWILIO_ACCOUNT_SID;
-          const authToken = appEnv.TWILIO_AUTH_TOKEN;
-          const fromNumber = appEnv.TWILIO_PHONE_NUMBER;
-
-          if (accountSid && authToken && fromNumber) {
+          const { sendSms } = await import("../telephony/twilio.client.js");
+          const fromNumber = org.phone_number ?? (await import("../../config/env.js")).env.TWILIO_PHONE_NUMBER;
+          if (fromNumber) {
             const smsBody = `ESCALATION (${parameters.urgency_level ?? "normal"}): ${parameters.caller_name ?? "Caller"} (${parameters.caller_number}) - ${parameters.reason}`;
-            await fetch(
-              `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
-              {
-                method: "POST",
-                headers: {
-                  Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
-                  "Content-Type": "application/x-www-form-urlencoded",
-                },
-                body: new URLSearchParams({
-                  From: fromNumber,
-                  To: org.escalation_phone,
-                  Body: smsBody,
-                }).toString(),
-              },
-            );
+            await sendSms(fromNumber, org.escalation_phone, smsBody);
             logger.info({ orgId: org.id, to: org.escalation_phone }, "Escalation SMS sent");
           }
         } catch (smsErr) {

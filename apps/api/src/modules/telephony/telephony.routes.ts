@@ -10,6 +10,12 @@ import * as ghlClient from "../ghl/ghl.client.js";
 import * as scriptsService from "../scripts/scripts.service.js";
 import * as whatsappService from "../whatsapp/whatsapp.service.js";
 import { supabaseAdmin } from "../../lib/supabase.js";
+import {
+  findSessionByConferenceRoom,
+  findSessionByBuilderCallSid,
+  finalCleanup,
+} from "./audio-bridge.js";
+import { handleBuilderNoAnswer } from "./warm-transfer.service.js";
 
 function verifyTwilioSignature(
   url: string,
@@ -316,6 +322,106 @@ const telephonyRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({ status: "received" });
     },
   });
+  // POST /webhooks/telephony/conference-status - Twilio Conference events
+  fastify.post("/conference-status", async (request, reply) => {
+    const payload = request.body as Record<string, string>;
+    const conferenceName = payload.FriendlyName;
+    const event = payload.StatusCallbackEvent;
+    const callSid = payload.CallSid;
+
+    const log = logger.child({ conference: conferenceName, event, callSid });
+
+    const session = conferenceName
+      ? findSessionByConferenceRoom(conferenceName)
+      : undefined;
+
+    if (!session?.warmTransfer) {
+      log.debug("No active warm transfer session for conference event");
+      return reply.send({ status: "ignored" });
+    }
+
+    if (event === "participant-join" && callSid === session.warmTransfer.builderCallSid) {
+      log.info("Builder joined conference");
+      session.warmTransfer.builderJoined = true;
+      session.warmTransfer.status = "builder_joined";
+
+      // Clear the builder timeout
+      if (session.warmTransfer.builderTimeoutId) {
+        clearTimeout(session.warmTransfer.builderTimeoutId);
+        session.warmTransfer.builderTimeoutId = null;
+      }
+
+      await callsService.updateCall(session.callId, {
+        warm_transfer_status: "builder_joined",
+      });
+    }
+
+    if (event === "conference-end") {
+      log.info("Conference ended");
+      session.warmTransfer.status = "completed";
+
+      await callsService.updateCall(session.callId, {
+        warm_transfer_status: "completed",
+        status: "completed",
+        ended_at: new Date().toISOString(),
+      });
+
+      finalCleanup(session.callId);
+    }
+
+    return reply.send({ status: "received" });
+  });
+
+  // POST /webhooks/telephony/builder-call-status - Builder outbound call status
+  fastify.post("/builder-call-status", async (request, reply) => {
+    const payload = request.body as Record<string, string>;
+    const builderCallSid = payload.CallSid;
+    const callStatus = payload.CallStatus;
+
+    const log = logger.child({ builderCallSid, status: callStatus });
+
+    const session = builderCallSid
+      ? findSessionByBuilderCallSid(builderCallSid)
+      : undefined;
+
+    if (!session?.warmTransfer) {
+      log.debug("No active warm transfer session for builder call status");
+      return reply.send({ status: "ignored" });
+    }
+
+    if (
+      callStatus === "no-answer" ||
+      callStatus === "busy" ||
+      callStatus === "failed"
+    ) {
+      log.warn({ callStatus }, "Builder did not answer transfer call");
+
+      // Clear timeout since this status tells us definitively
+      if (session.warmTransfer.builderTimeoutId) {
+        clearTimeout(session.warmTransfer.builderTimeoutId);
+        session.warmTransfer.builderTimeoutId = null;
+      }
+
+      // Fetch org for builder name
+      const org = await orgService.getOrganisation(session.organisationId);
+
+      await handleBuilderNoAnswer({
+        callId: session.callId,
+        callSid: session.callSid,
+        organisationId: session.organisationId,
+        orgPhoneNumber: org?.phone_number ?? "",
+        builderPhone: session.warmTransfer.builderPhone,
+        builderName: org?.builder_name ?? "the builder",
+        callerName: session.warmTransfer.callerName,
+        callerNumber: session.warmTransfer.callerNumber,
+        reason: session.warmTransfer.reason,
+        conferenceRoom: session.warmTransfer.conferenceRoom,
+      });
+    }
+
+    return reply.send({ status: "received" });
+  });
+
   // POST /webhooks/telephony/whatsapp-status - WhatsApp message status
   fastify.post("/whatsapp-status", async (request, reply) => {
     const signature = (request.headers["x-twilio-signature"] as string) ?? "";

@@ -11,6 +11,12 @@ export const GHL_RATE_LIMIT = {
   dailyMax: 200_000,
 };
 
+export const WARM_TRANSFER = {
+  HANDOFF_DELAY_MS: 8_000,      // Time for agent to say goodbye before moving to conference
+  BUILDER_TIMEOUT_MS: 25_000,   // Time to wait for builder to answer
+  HOLD_MUSIC_URL: "http://twimlets.com/holdmusic?Bucket=com.twilio.music.classical",
+} as const;
+
 export const QUEUE_NAMES = {
   POST_CALL: "post-call-processing",
   GHL_SYNC: "ghl-sync",

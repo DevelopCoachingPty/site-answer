@@ -15,6 +15,7 @@ const UpdateOrgBody = Type.Object({
   after_hours_action: Type.Optional(Type.String()),
   escalation_phone: Type.Optional(Type.String()),
   escalation_sms: Type.Optional(Type.Boolean()),
+  warm_transfer_enabled: Type.Optional(Type.Boolean()),
   calendar_type: Type.Optional(Type.String()),
   monthly_minutes_limit: Type.Optional(Type.Integer({ minimum: 100 })),
 });
