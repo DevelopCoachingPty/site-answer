@@ -4,7 +4,6 @@ import { vi } from "vitest";
 vi.stubEnv("SUPABASE_URL", "http://localhost:54321");
 vi.stubEnv("SUPABASE_ANON_KEY", "test-anon-key");
 vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
-vi.stubEnv("REDIS_URL", "redis://localhost:6379");
 vi.stubEnv("FRONTEND_URL", "http://localhost:3000");
 vi.stubEnv("NODE_ENV", "development");
 vi.stubEnv("LOG_LEVEL", "fatal");
@@ -75,38 +74,3 @@ vi.mock("../lib/supabase.js", () => {
   return { supabaseAdmin, createSupabaseUserClient: vi.fn(() => supabaseAdmin) };
 });
 
-// Mock BullMQ (direct import used in health routes)
-vi.mock("bullmq", () => {
-  const MockQueue = vi.fn().mockImplementation(() => ({
-    client: Promise.resolve({}),
-    close: vi.fn().mockResolvedValue(undefined),
-    add: vi.fn().mockResolvedValue({ id: "test-job-id" }),
-  }));
-  const MockWorker = vi.fn().mockImplementation(() => ({
-    close: vi.fn().mockResolvedValue(undefined),
-  }));
-  return { Queue: MockQueue, Worker: MockWorker };
-});
-
-// Mock BullMQ queue helper
-vi.mock("../lib/queue.js", () => {
-  const mockQueue = {
-    add: vi.fn().mockResolvedValue({ id: "test-job-id" }),
-    close: vi.fn().mockResolvedValue(undefined),
-  };
-  return {
-    createQueue: vi.fn(() => mockQueue),
-    getQueue: vi.fn(() => mockQueue),
-    getPostCallQueue: vi.fn(() => mockQueue),
-    getGhlSyncQueue: vi.fn(() => mockQueue),
-    getAgentSyncQueue: vi.fn(() => mockQueue),
-    getPaymentChaseQueue: vi.fn(() => mockQueue),
-    getInvoiceSyncQueue: vi.fn(() => mockQueue),
-    closeQueues: vi.fn().mockResolvedValue(undefined),
-  };
-});
-
-// Mock audio bridge for health routes
-vi.mock("../modules/telephony/audio-bridge.js", () => ({
-  getActiveSessionCount: vi.fn(() => 0),
-}));

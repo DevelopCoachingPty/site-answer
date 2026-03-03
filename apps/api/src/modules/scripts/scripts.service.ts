@@ -1,7 +1,6 @@
 import { supabaseAdmin } from "../../lib/supabase.js";
 import { AppError, NotFoundError } from "../../lib/errors.js";
-import { getQueue } from "../../lib/queue.js";
-import { QUEUE_NAMES } from "../../config/constants.js";
+import { syncAgent } from "../../services/agent-sync.service.js";
 import { logger } from "../../lib/logger.js";
 
 export async function listScripts(orgId: string) {
@@ -151,17 +150,11 @@ export async function publishScript(orgId: string, scriptId: string, userId: str
     throw new AppError(500, `Failed to publish script: ${error.message}`, "DB_ERROR");
   }
 
-  // Queue agent sync
+  // Sync agent after publish
   try {
-    const queue = getQueue(QUEUE_NAMES.AGENT_SYNC);
-    await queue.add("sync", { organisationId: orgId, trigger: "script_published" }, {
-      jobId: `agent-sync-${orgId}`,
-      attempts: 3,
-      backoff: { type: "exponential", delay: 5000 },
-      delay: 2000,
-    });
+    await syncAgent(orgId, "script_published");
   } catch (err) {
-    logger.warn({ err }, "Failed to queue agent sync after publish");
+    logger.warn({ err }, "Agent sync failed after publish (non-critical)");
   }
 
   return data;

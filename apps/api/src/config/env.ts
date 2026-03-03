@@ -12,9 +12,6 @@ const envSchema = z.object({
   SUPABASE_ANON_KEY: z.string().min(1),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
 
-  // Redis
-  REDIS_URL: z.string().default("redis://localhost:6379"),
-
   // ElevenLabs
   ELEVENLABS_API_KEY: z.string().min(1).optional(),
   ELEVENLABS_DEFAULT_VOICE_ID: z.string().optional(),
@@ -47,12 +44,6 @@ const envSchema = z.object({
   // Encryption (required in production to protect OAuth tokens)
   ENCRYPTION_KEY: z.string().min(64, "ENCRYPTION_KEY must be a 32-byte hex string (64 chars)"),
 
-  // Twilio
-  TWILIO_ACCOUNT_SID: z.string().optional(),
-  TWILIO_AUTH_TOKEN: z.string().optional(),
-  TWILIO_PHONE_NUMBER: z.string().optional(),
-  TWILIO_WHATSAPP_NUMBER: z.string().optional(),
-
   // Frontend URL
   FRONTEND_URL: z.string().url().default("http://localhost:3000"),
 
@@ -63,9 +54,8 @@ const envSchema = z.object({
   // Default timezone (used when org.timezone is not set)
   DEFAULT_TIMEZONE: z.string().default("Australia/Sydney"),
 
-  // Worker schedules
-  CHASE_SCHEDULER_INTERVAL_MS: z.coerce.number().default(5 * 60 * 1000), // 5 minutes
-  STATS_AGGREGATION_CRON: z.string().default("0 2 * * *"), // 2am daily
+  // Sentry
+  SENTRY_DSN: z.string().url().optional(),
 
   // Alerts
   ALERT_EMAIL: z.string().email().optional(),

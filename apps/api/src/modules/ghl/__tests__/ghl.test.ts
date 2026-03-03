@@ -56,7 +56,7 @@ describe("GHL Routes", () => {
   });
 
   describe("GET /ghl/oauth/authorize", () => {
-    it("redirects to GHL OAuth URL", async () => {
+    it("returns GHL OAuth URL", async () => {
       mockAuthenticatedUser({ userId: "user-1", organisationId: "org-1" });
 
       const res = await app.inject({
@@ -65,8 +65,9 @@ describe("GHL Routes", () => {
         headers: { authorization: AUTH },
       });
 
-      expect(res.statusCode).toBe(302);
-      expect(res.headers.location).toContain("gohighlevel.com");
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.payload);
+      expect(body.url).toContain("gohighlevel.com");
     });
   });
 

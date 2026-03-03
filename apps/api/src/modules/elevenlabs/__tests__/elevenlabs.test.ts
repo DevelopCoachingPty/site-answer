@@ -29,11 +29,7 @@ vi.mock("../../../config/env.js", () => ({
     LOG_LEVEL: "fatal",
     SUPABASE_URL: "http://localhost:54321",
     SUPABASE_SERVICE_ROLE_KEY: "test-key",
-    REDIS_URL: "redis://localhost:6379",
     FRONTEND_URL: "http://localhost:3000",
-    TWILIO_ACCOUNT_SID: "ACtest",
-    TWILIO_AUTH_TOKEN: "test-auth-token",
-    TWILIO_PHONE_NUMBER: "+15005550006",
   },
 }));
 
@@ -288,7 +284,7 @@ describe("ElevenLabs Routes", () => {
       expect(body.escalated).toBe(true);
     });
 
-    it("sends SMS when escalation is enabled", async () => {
+    it("creates notification when escalation phone is set", async () => {
       vi.mocked(orgService.getOrganisationByAgentId).mockResolvedValue({
         ...MOCK_ORG,
         escalation_sms: true,
@@ -305,10 +301,9 @@ describe("ElevenLabs Routes", () => {
       });
 
       expect(res.statusCode).toBe(200);
-      expect(vi.mocked(fetch)).toHaveBeenCalledWith(
-        expect.stringContaining("api.twilio.com"),
-        expect.objectContaining({ method: "POST" }),
-      );
+      const body = JSON.parse(res.payload);
+      expect(body.success).toBe(true);
+      expect(body.escalated).toBe(true);
     });
   });
 

@@ -3,13 +3,40 @@ import { Type, Static } from "@sinclair/typebox";
 import { supabaseAdmin } from "../../lib/supabase.js";
 import * as orgService from "../organisations/org.service.js";
 import * as scriptsService from "../scripts/scripts.service.js";
+import * as kbService from "../knowledge-base/kb.service.js";
+import { validateEmailDomain } from "../../lib/email-validation.js";
 
 const RegisterBody = Type.Object({
   full_name: Type.String({ minLength: 1 }),
   company_name: Type.String({ minLength: 1 }),
 });
 
+const CheckEmailBody = Type.Object({
+  email: Type.String({ format: "email" }),
+});
+
 const authRoutes: FastifyPluginAsync = async (fastify) => {
+  /**
+   * POST /auth/check-email
+   *
+   * Public endpoint (no JWT). Validates that the email domain has MX records
+   * so Supabase won't send confirmation emails to undeliverable addresses.
+   */
+  fastify.post<{ Body: Static<typeof CheckEmailBody> }>("/check-email", {
+    config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+    schema: { body: CheckEmailBody },
+    handler: async (request, reply) => {
+      const result = await validateEmailDomain(request.body.email);
+      if (result.valid === false) {
+        return reply.code(422).send({
+          error: "INVALID_EMAIL_DOMAIN",
+          message: result.reason,
+        });
+      }
+      return reply.send({ valid: true });
+    },
+  });
+
   /**
    * POST /auth/setup-profile
    *
@@ -37,7 +64,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       // Get auth user email
-      const { data: { user: authUser } } = await supabaseAdmin.auth.admin.getUserById(userId);
+      const { data: { user: authUser } } = await (supabaseAdmin.auth as any).admin.getUserById(userId);
       if (!authUser) {
         return reply.code(400).send({ error: "AUTH_ERROR", message: "Auth user not found" });
       }
@@ -66,8 +93,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         throw new Error(`Failed to create user profile: ${userError.message}`);
       }
 
-      // Seed default conversation scripts for the new org
+      // Seed default conversation scripts and knowledge base for the new org
       await scriptsService.seedDefaultScripts(org.id);
+      await kbService.seedDefaultKnowledgeBase(org.id);
 
       return reply.code(201).send({
         data: { user: userProfile, organisation: org },

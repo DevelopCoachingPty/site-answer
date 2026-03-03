@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { LogoutButton } from "@/components/logout-button";
 import { MobileNav } from "@/components/mobile-nav";
+import { NotificationBadge } from "@/components/notification-badge";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard" },
@@ -11,6 +12,7 @@ const navItems = [
   { href: "/dashboard/knowledge-base", label: "Knowledge Base" },
   { href: "/dashboard/scripts", label: "Scripts" },
   { href: "/dashboard/analytics", label: "Analytics" },
+  { href: "/dashboard/notifications", label: "Notifications" },
   { href: "/dashboard/whatsapp", label: "WhatsApp" },
   { href: "/dashboard/settings", label: "Settings" },
 ];
@@ -47,6 +49,7 @@ export default async function DashboardLayout({
                   className="rounded-lg px-3 py-2 text-sm font-medium text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)] transition-colors"
                 >
                   {item.label}
+                  {item.href === "/dashboard/notifications" && <NotificationBadge />}
                 </Link>
               ))}
             </nav>

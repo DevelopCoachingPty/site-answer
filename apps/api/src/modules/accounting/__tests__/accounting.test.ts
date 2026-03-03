@@ -180,7 +180,7 @@ describe("Accounting Routes", () => {
   });
 
   describe("POST /accounting/sync", () => {
-    it("queues sync job and returns queued", async () => {
+    it("returns 501 (Phase 2 feature)", async () => {
       mockAuthenticatedUser({ userId: "user-1", organisationId: "org-1" });
 
       const res = await app.inject({
@@ -189,8 +189,8 @@ describe("Accounting Routes", () => {
         headers: { authorization: AUTH },
       });
 
-      expect(res.statusCode).toBe(200);
-      expect(JSON.parse(res.payload)).toEqual({ status: "queued" });
+      expect(res.statusCode).toBe(501);
+      expect(JSON.parse(res.payload)).toEqual({ error: "Automatic invoice sync will be available in Phase 2" });
     });
   });
 

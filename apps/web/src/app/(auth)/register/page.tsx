@@ -16,6 +16,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -23,13 +24,32 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
+      // 1. Verify email domain can receive mail (MX record check)
+      try {
+        const checkRes = await fetch(`${API_BASE_URL}/auth/check-email`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+        if (checkRes.status === 422) {
+          const body = await checkRes.json().catch(() => ({}));
+          setError(body.message || "This email domain cannot receive mail. Please use a valid email address.");
+          setLoading(false);
+          return;
+        }
+        // Any other status (200, network error caught below) → proceed
+      } catch {
+        // Network error → fail-open, let signup continue
+      }
+
       const supabase = createClient();
 
-      // 1. Create auth user
+      // 2. Create auth user
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
           data: {
             full_name: fullName,
             company_name: companyName,
@@ -43,34 +63,65 @@ export default function RegisterPage() {
         return;
       }
 
-      // 2. Setup user profile and organisation via API
-      if (data.session) {
-        const profileRes = await fetch(`${API_BASE_URL}/auth/setup-profile`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${data.session.access_token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            full_name: fullName,
-            company_name: companyName,
-          }),
-        });
-
-        if (!profileRes.ok) {
-          const errBody = await profileRes.json().catch(() => ({}));
-          setError(errBody.message || "Account created but profile setup failed. Please contact support.");
-          setLoading(false);
-          return;
-        }
+      // 3. If email confirmation is required, no session is returned
+      if (!data.session) {
+        setEmailSent(true);
+        setLoading(false);
+        return;
       }
 
-      router.push("/dashboard");
+      // 4. Setup user profile and organisation via API
+      const profileRes = await fetch(`${API_BASE_URL}/auth/setup-profile`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${data.session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          full_name: fullName,
+          company_name: companyName,
+        }),
+      });
+
+      if (!profileRes.ok) {
+        const errBody = await profileRes.json().catch(() => ({}));
+        setError(errBody.message || "Account created but profile setup failed. Please contact support.");
+        setLoading(false);
+        return;
+      }
+
+      router.push("/dashboard/onboarding");
       router.refresh();
     } catch {
       setError("Something went wrong. Please try again.");
       setLoading(false);
     }
+  }
+
+  if (emailSent) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-4">
+        <div className="w-full max-w-sm text-center">
+          <h1 className="text-2xl font-bold">SiteAnswer</h1>
+          <div className="mt-6 rounded-lg border border-[var(--input)] bg-[var(--background)] p-6">
+            <h2 className="text-lg font-semibold">Check your email</h2>
+            <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+              We&apos;ve sent a confirmation link to <strong>{email}</strong>.
+              Click the link in the email to activate your account.
+            </p>
+          </div>
+          <p className="mt-4 text-sm text-[var(--muted-foreground)]">
+            Didn&apos;t receive the email? Check your spam folder or{" "}
+            <button
+              onClick={() => setEmailSent(false)}
+              className="text-[var(--primary)] hover:underline"
+            >
+              try again
+            </button>
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (

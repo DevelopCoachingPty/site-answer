@@ -22,6 +22,8 @@ interface Organisation {
   after_hours_action: string | null;
   escalation_phone: string | null;
   escalation_sms: boolean;
+  gdpr_announcement_enabled: boolean;
+  gdpr_announcement_text: string | null;
   ghl_connected: boolean;
   calendar_connected: boolean;
 }
@@ -52,6 +54,7 @@ interface AccountingStatus {
 export default function SettingsPage() {
   const { data, loading, refetch } = useApi<{ data: Organisation }>("/organisations");
   const { toast } = useToast();
+  const { data: ghlStatus, refetch: refetchGhl } = useApi<{ connected: boolean }>("/ghl/status");
   const { data: accountingStatus, refetch: refetchAccounting } = useApi<AccountingStatus>("/accounting/status");
   const [syncing, setSyncing] = useState(false);
   const [form, setForm] = useState({
@@ -63,6 +66,8 @@ export default function SettingsPage() {
     escalation_phone: "",
     escalation_sms: true,
     after_hours_action: "voicemail",
+    gdpr_announcement_enabled: false,
+    gdpr_announcement_text: "This call may be recorded for quality and training purposes.",
     whatsapp_enabled: false,
     whatsapp_phone_number: "",
     business_hours: DEFAULT_HOURS as Record<string, DayHours>,
@@ -82,6 +87,8 @@ export default function SettingsPage() {
         escalation_phone: org.escalation_phone ?? "",
         escalation_sms: org.escalation_sms ?? true,
         after_hours_action: org.after_hours_action ?? "voicemail",
+        gdpr_announcement_enabled: org.gdpr_announcement_enabled ?? false,
+        gdpr_announcement_text: org.gdpr_announcement_text ?? "This call may be recorded for quality and training purposes.",
         whatsapp_enabled: (org as unknown as Record<string, unknown>).whatsapp_enabled as boolean ?? false,
         whatsapp_phone_number: (org as unknown as Record<string, unknown>).whatsapp_phone_number as string ?? "",
         business_hours: (org.business_hours ?? DEFAULT_HOURS) as Record<string, DayHours>,
@@ -289,6 +296,38 @@ export default function SettingsPage() {
           </div>
         </section>
 
+        {/* Compliance / GDPR */}
+        <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
+          <h2 className="font-semibold mb-4">Compliance</h2>
+          <p className="text-sm text-[var(--muted-foreground)] mb-4">
+            Configure GDPR/privacy announcements played at the start of each call.
+          </p>
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="gdpr_enabled"
+                checked={form.gdpr_announcement_enabled}
+                onChange={(e) => setForm({ ...form, gdpr_announcement_enabled: e.target.checked })}
+              />
+              <label htmlFor="gdpr_enabled" className="text-sm">
+                Enable call recording announcement
+              </label>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Announcement Text</label>
+              <textarea
+                value={form.gdpr_announcement_text}
+                onChange={(e) => setForm({ ...form, gdpr_announcement_text: e.target.value })}
+                disabled={!form.gdpr_announcement_enabled}
+                rows={2}
+                className="w-full rounded-lg border border-[var(--input)] bg-[var(--background)] px-3 py-2 text-sm disabled:opacity-50"
+                placeholder="This call may be recorded for quality and training purposes."
+              />
+            </div>
+          </div>
+        </section>
+
         {/* WhatsApp */}
         <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
           <h2 className="font-semibold mb-4">WhatsApp</h2>
@@ -331,13 +370,35 @@ export default function SettingsPage() {
                 <h3 className="font-medium">GoHighLevel</h3>
                 <p className="text-sm text-[var(--muted-foreground)]">CRM integration for contacts and activities</p>
               </div>
-              <span className={`rounded-full px-3 py-1 text-xs font-medium ${
-                data?.data?.ghl_connected
-                  ? "bg-green-100 text-green-800"
-                  : "bg-[var(--muted)] text-[var(--muted-foreground)]"
-              }`}>
-                {data?.data?.ghl_connected ? "Connected" : "Not connected"}
-              </span>
+              <div className="flex items-center gap-2">
+                {ghlStatus?.connected ? (
+                  <>
+                    <button
+                      onClick={async () => {
+                        await api.delete("/ghl/disconnect");
+                        refetchGhl();
+                        refetch();
+                      }}
+                      className="rounded-lg border border-red-200 px-3 py-1 text-xs text-red-600 hover:bg-red-50"
+                    >
+                      Disconnect
+                    </button>
+                    <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
+                      Connected
+                    </span>
+                  </>
+                ) : (
+                  <button
+                    onClick={async () => {
+                      const { url } = await api.get<{ url: string }>("/ghl/oauth/authorize");
+                      window.location.href = url;
+                    }}
+                    className="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)]"
+                  >
+                    Connect
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Xero */}

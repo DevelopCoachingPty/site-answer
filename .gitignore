@@ -37,3 +37,6 @@ coverage/
 
 # Supabase
 packages/supabase/.temp/
+
+.vercel
+.env*.local

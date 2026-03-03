@@ -1,7 +1,6 @@
 import { buildServer } from "./server.js";
 import { env } from "./config/env.js";
 import { logger } from "./lib/logger.js";
-import { closeQueues } from "./lib/queue.js";
 
 async function main() {
   const server = await buildServer();
@@ -12,7 +11,6 @@ async function main() {
     process.on(signal, async () => {
       logger.info({ signal }, "Received shutdown signal");
       await server.close();
-      await closeQueues();
       process.exit(0);
     });
   }

@@ -29,7 +29,7 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
 
       const token = authHeader.slice(7);
 
-      const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+      const { data: { user }, error } = await (supabaseAdmin.auth as any).getUser(token);
 
       if (error || !user) {
         throw new UnauthorizedError("Invalid or expired token");

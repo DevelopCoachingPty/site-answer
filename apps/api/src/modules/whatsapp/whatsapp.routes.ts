@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from "fastify";
 import { Type, Static } from "@sinclair/typebox";
+import { logger } from "../../lib/logger.js";
 import * as whatsappService from "./whatsapp.service.js";
 
 const UpsertTemplateBody = Type.Object({
@@ -29,6 +30,25 @@ const ListMessagesQuery = Type.Object({
 });
 
 const whatsappRoutes: FastifyPluginAsync = async (fastify) => {
+  // POST /whatsapp/webhook/status - WhatsApp message status (no auth — webhook from provider)
+  fastify.post("/webhook/status", async (request, reply) => {
+    const payload = request.body as Record<string, string>;
+    const messageSid = payload.MessageSid;
+    const messageStatus = payload.MessageStatus;
+
+    if (messageSid && messageStatus) {
+      logger.info({ messageSid, status: messageStatus }, "WhatsApp status update");
+      await whatsappService.updateMessageStatus(
+        messageSid,
+        messageStatus,
+        payload.ErrorMessage,
+      );
+    }
+
+    return reply.send({ status: "received" });
+  });
+
+  // --- Authenticated routes below ---
   fastify.addHook("preHandler", fastify.authenticate);
   fastify.addHook("preHandler", fastify.requireOrganisation);
 

@@ -61,7 +61,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
       const { name, builder_name, email, phone_number, ghl_location_id } = request.body;
 
       // Create auth user via Supabase Admin API
-      const { data: authUser, error: authError } = await (await import("../../lib/supabase.js")).supabaseAdmin.auth.admin.createUser({
+      const { data: authUser, error: authError } = await ((await import("../../lib/supabase.js")).supabaseAdmin.auth as any).admin.createUser({
         email,
         email_confirm: true,
         user_metadata: { full_name: builder_name, company_name: name },
@@ -94,7 +94,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         const { supabaseAdmin: supa } = await import("../../lib/supabase.js");
         const { env: appEnv } = await import("../../config/env.js");
-        const { error: linkError } = await supa.auth.admin.generateLink({
+        const { error: linkError } = await (supa.auth as any).admin.generateLink({
           type: "invite",
           email,
           options: { redirectTo: `${appEnv.FRONTEND_URL}/login` },

@@ -1,9 +1,8 @@
 import { FastifyPluginAsync } from "fastify";
 import { Type, Static } from "@sinclair/typebox";
 import * as orgService from "./org.service.js";
-import { createTestCall } from "../elevenlabs/elevenlabs.client.js";
+import { createTestCall, assignPhoneToAgent } from "../elevenlabs/elevenlabs.client.js";
 import { supabaseAdmin } from "../../lib/supabase.js";
-import { env } from "../../config/env.js";
 
 const UpdateOrgBody = Type.Object({
   name: Type.Optional(Type.String({ minLength: 1 })),
@@ -18,6 +17,8 @@ const UpdateOrgBody = Type.Object({
   warm_transfer_enabled: Type.Optional(Type.Boolean()),
   calendar_type: Type.Optional(Type.String()),
   monthly_minutes_limit: Type.Optional(Type.Integer({ minimum: 100 })),
+  gdpr_announcement_enabled: Type.Optional(Type.Boolean()),
+  gdpr_announcement_text: Type.Optional(Type.String()),
 });
 
 const orgRoutes: FastifyPluginAsync = async (fastify) => {
@@ -69,7 +70,7 @@ const orgRoutes: FastifyPluginAsync = async (fastify) => {
 
       const result = await createTestCall(org.elevenlabs_agent_id, {
         toNumber: request.body.phone_number,
-        fromNumber: org.phone_number ?? env.TWILIO_PHONE_NUMBER ?? "",
+        fromNumber: org.phone_number ?? "",
         orgName: org.name,
       });
 
@@ -78,6 +79,39 @@ const orgRoutes: FastifyPluginAsync = async (fastify) => {
         "Test call initiated",
       );
       return reply.send({ message: "Test call initiated", conversation_id: result.conversation_id });
+    },
+  });
+
+  // POST /organisations/phone-setup - Link an ElevenLabs phone number to the org's agent
+  fastify.post<{ Body: { phone_number_id: string } }>("/phone-setup", {
+    preHandler: [fastify.requireOrganisation],
+    schema: {
+      body: Type.Object({ phone_number_id: Type.String({ minLength: 1 }) }),
+    },
+    handler: async (request, reply) => {
+      const orgId = request.organisationId!;
+
+      const { data: org } = await supabaseAdmin
+        .from("organisations")
+        .select("elevenlabs_agent_id")
+        .eq("id", orgId)
+        .single();
+
+      if (!org?.elevenlabs_agent_id) {
+        return reply.code(400).send({
+          error: "AGENT_NOT_PROVISIONED",
+          message: "No AI agent provisioned. Please set up your agent first.",
+        });
+      }
+
+      await assignPhoneToAgent(request.body.phone_number_id, org.elevenlabs_agent_id);
+
+      await supabaseAdmin
+        .from("organisations")
+        .update({ elevenlabs_phone_number_id: request.body.phone_number_id })
+        .eq("id", orgId);
+
+      return reply.send({ success: true, message: "Phone number linked to agent" });
     },
   });
 };

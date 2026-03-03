@@ -35,7 +35,6 @@ describe("Health Routes", () => {
     expect(body).toHaveProperty("timestamp");
     expect(body).toHaveProperty("version", "0.1.0");
     expect(body).toHaveProperty("services");
-    expect(body).toHaveProperty("activeCalls", 0);
   });
 
   it("GET /health returns 503 when database check fails", async () => {

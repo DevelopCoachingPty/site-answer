@@ -8,6 +8,14 @@ import {
 } from "../../../__tests__/helpers.js";
 import authRoutes from "../auth.routes.js";
 
+// Mock the email validation module for check-email tests
+vi.mock("../../../lib/email-validation.js", () => ({
+  validateEmailDomain: vi.fn(),
+}));
+
+import { validateEmailDomain } from "../../../lib/email-validation.js";
+const mockValidateEmailDomain = validateEmailDomain as ReturnType<typeof vi.fn>;
+
 describe("Auth Routes", () => {
   let app: FastifyInstance;
   const AUTH_HEADER = "Bearer test-jwt-token";
@@ -25,6 +33,61 @@ describe("Auth Routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetSupabaseMocks();
+  });
+
+  describe("POST /auth/check-email", () => {
+    it("returns 200 for valid email domain", async () => {
+      mockValidateEmailDomain.mockResolvedValue({ valid: true });
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/auth/check-email",
+        payload: { email: "user@gmail.com" },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ valid: true });
+    });
+
+    it("returns 422 for invalid email domain", async () => {
+      mockValidateEmailDomain.mockResolvedValue({
+        valid: false,
+        reason: "Email domain does not exist or cannot receive mail",
+      });
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/auth/check-email",
+        payload: { email: "user@doesnotexist12345.com" },
+      });
+
+      expect(response.statusCode).toBe(422);
+      const body = response.json();
+      expect(body.error).toBe("INVALID_EMAIL_DOMAIN");
+    });
+
+    it("returns 400 for malformed email", async () => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/auth/check-email",
+        payload: { email: "not-an-email" },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it("does not require authentication", async () => {
+      mockValidateEmailDomain.mockResolvedValue({ valid: true });
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/auth/check-email",
+        payload: { email: "user@example.com" },
+      });
+
+      // Should not be 401 - no auth header needed
+      expect(response.statusCode).not.toBe(401);
+    });
   });
 
   describe("GET /auth/me", () => {

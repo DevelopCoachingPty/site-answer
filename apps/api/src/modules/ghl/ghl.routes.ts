@@ -14,7 +14,7 @@ const ghlRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.authenticate, fastify.requireOrganisation],
     handler: async (request, reply) => {
       const url = ghlClient.getOAuthAuthorizeUrl(request.organisationId!);
-      return reply.redirect(url);
+      return reply.send({ url });
     },
   });
 

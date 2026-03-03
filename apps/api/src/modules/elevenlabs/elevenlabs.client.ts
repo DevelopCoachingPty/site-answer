@@ -6,6 +6,59 @@ import * as kbService from "../knowledge-base/kb.service.js";
 import * as scriptsService from "../scripts/scripts.service.js";
 import { buildScreeningPromptSection } from "../screening/screening.service.js";
 
+// --- Business Hours ---
+
+interface BusinessHours {
+  [day: string]: { open: string; close: string } | null;
+}
+
+function isCurrentlyBusinessHours(
+  businessHours: BusinessHours | null,
+  timezone: string,
+): { withinHours: boolean; currentTime: string; todayHours: string } {
+  const tz = timezone || env.DEFAULT_TIMEZONE;
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat("en-AU", {
+    timeZone: tz,
+    weekday: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(now);
+  const weekday = parts.find((p) => p.type === "weekday")?.value?.toLowerCase() ?? "";
+  const hour = parts.find((p) => p.type === "hour")?.value ?? "00";
+  const minute = parts.find((p) => p.type === "minute")?.value ?? "00";
+  const currentTime = `${hour}:${minute}`;
+
+  const timeFormatter = new Intl.DateTimeFormat("en-AU", {
+    timeZone: tz,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    weekday: "long",
+    day: "numeric",
+    month: "short",
+  });
+  const displayTime = timeFormatter.format(now);
+
+  if (!businessHours) {
+    return { withinHours: true, currentTime: displayTime, todayHours: "Not configured" };
+  }
+
+  const todaySchedule = businessHours[weekday];
+  if (!todaySchedule) {
+    return { withinHours: false, currentTime: displayTime, todayHours: "Closed today" };
+  }
+
+  const withinHours = currentTime >= todaySchedule.open && currentTime < todaySchedule.close;
+  return {
+    withinHours,
+    currentTime: displayTime,
+    todayHours: `${todaySchedule.open} - ${todaySchedule.close}`,
+  };
+}
+
 const ELEVENLABS_API_BASE = "https://api.elevenlabs.io/v1";
 
 function getHeaders() {
@@ -15,7 +68,7 @@ function getHeaders() {
   };
 }
 
-async function elFetch(path: string, options: RequestInit = {}): Promise<Response> {
+async function elFetch(path: string, options: RequestInit = {}, retryCount = 0): Promise<Response> {
   const response = await fetch(`${ELEVENLABS_API_BASE}${path}`, {
     ...options,
     headers: {
@@ -24,9 +77,17 @@ async function elFetch(path: string, options: RequestInit = {}): Promise<Respons
     },
   });
 
+  // Retry once on 5xx errors with exponential backoff
+  if (response.status >= 500 && retryCount < 1) {
+    const delay = 2000 * (retryCount + 1);
+    logger.warn({ path, status: response.status, retryCount }, `ElevenLabs 5xx, retrying in ${delay}ms`);
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    return elFetch(path, options, retryCount + 1);
+  }
+
   if (!response.ok) {
     const body = await response.text();
-    logger.error({ path, status: response.status, body }, "ElevenLabs API error");
+    logger.error({ path, status: response.status, body, retried: retryCount > 0 }, "ElevenLabs API error");
     throw new ExternalServiceError("ElevenLabs", `API call failed (${response.status}): ${body}`);
   }
 
@@ -39,6 +100,18 @@ export async function createAgent(orgId: string, orgName: string): Promise<strin
   const systemPrompt = await buildSystemPrompt(orgId);
   const toolFunctionBaseUrl = `${env.API_BASE_URL}/api/v1/webhooks/elevenlabs`;
 
+  // Check for GDPR announcement
+  const { data: orgGdpr } = await supabaseAdmin
+    .from("organisations")
+    .select("gdpr_announcement_enabled, gdpr_announcement_text")
+    .eq("id", orgId)
+    .single();
+
+  const greeting = `Good morning, you've reached ${orgName}, how can I help you today?`;
+  const firstMessage = orgGdpr?.gdpr_announcement_enabled && orgGdpr.gdpr_announcement_text
+    ? `${orgGdpr.gdpr_announcement_text} ${greeting}`
+    : greeting;
+
   const response = await elFetch("/convai/agents/create", {
     method: "POST",
     body: JSON.stringify({
@@ -48,7 +121,7 @@ export async function createAgent(orgId: string, orgName: string): Promise<strin
           prompt: {
             prompt: systemPrompt,
           },
-          first_message: `Good morning, you've reached ${orgName}, how can I help you today?`,
+          first_message: firstMessage,
           language: "en",
         },
         asr: {
@@ -107,7 +180,7 @@ export async function buildSystemPrompt(orgId: string): Promise<string> {
   // Get organisation details
   const { data: org } = await supabaseAdmin
     .from("organisations")
-    .select("name, builder_name, greeting_name, phone_number, timezone, business_hours, escalation_phone, escalation_sms")
+    .select("name, builder_name, greeting_name, phone_number, timezone, business_hours, escalation_phone, escalation_sms, gdpr_announcement_enabled, gdpr_announcement_text")
     .eq("id", orgId)
     .single();
 
@@ -116,6 +189,22 @@ export async function buildSystemPrompt(orgId: string): Promise<string> {
   }
 
   const builderName = org.builder_name ?? "the owner";
+  const timezone = org.timezone ?? env.DEFAULT_TIMEZONE;
+
+  // Check business hours
+  const hoursStatus = isCurrentlyBusinessHours(
+    org.business_hours as BusinessHours | null,
+    timezone,
+  );
+
+  // Get after-hours script if outside business hours
+  let afterHoursScript: string | null = null;
+  if (!hoursStatus.withinHours) {
+    const script = await scriptsService.getActiveScript(orgId, "after_hours");
+    if (script) {
+      afterHoursScript = script.system_prompt;
+    }
+  }
 
   // Get active knowledge base entries (exclude screening categories — handled separately)
   const kbEntries = (await kbService.getActiveKnowledgeBase(orgId))
@@ -135,7 +224,7 @@ export async function buildSystemPrompt(orgId: string): Promise<string> {
   );
 
   const kbText = Object.entries(kbSections)
-    .map(([category, entries]) => `## ${category.toUpperCase()}\n${entries.join("\n\n")}`)
+    .map(([category, entries]: [string, string[]]) => `## ${category.toUpperCase()}\n${entries.join("\n\n")}`)
     .join("\n\n");
 
   // Build script references
@@ -150,7 +239,10 @@ export async function buildSystemPrompt(orgId: string): Promise<string> {
 Builder: ${builderName}
 ${org.greeting_name ? `Refer to the business as: ${org.greeting_name}` : ""}
 Phone: ${org.phone_number ?? "not set"}
-Timezone: ${org.timezone ?? env.DEFAULT_TIMEZONE}
+Timezone: ${timezone}
+Current time: ${hoursStatus.currentTime}
+Business hours today: ${hoursStatus.todayHours}
+Status: ${hoursStatus.withinHours ? "WITHIN business hours" : "OUTSIDE business hours — follow after-hours procedures"}
 Escalation phone: ${org.escalation_phone ?? "not set"}
 ${org.escalation_sms ? "Send SMS when escalating." : ""}
 
@@ -191,7 +283,15 @@ completely — the system will handle the transfer. Do NOT continue the conversa
 ---
 ${screeningSection}
 ---
+${afterHoursScript ? `
+# AFTER-HOURS INSTRUCTIONS
+You are currently answering calls OUTSIDE business hours. Follow these instructions:
+${afterHoursScript}
 
+Important: Do NOT book appointments during after-hours calls. Take messages and offer callbacks during the next business day.
+
+---
+` : ""}
 # RULES
 1. Be warm, professional, and efficient
 2. Never make commitments on pricing or timelines
@@ -380,6 +480,25 @@ function buildToolConfigs(baseUrl: string) {
   ];
 }
 
+// --- Phone Number Management ---
+
+export async function listPhoneNumbers() {
+  const response = await elFetch("/convai/phone-numbers");
+  return response.json();
+}
+
+export async function getPhoneNumber(phoneNumberId: string) {
+  const response = await elFetch(`/convai/phone-numbers/${phoneNumberId}`);
+  return response.json();
+}
+
+export async function assignPhoneToAgent(phoneNumberId: string, agentId: string) {
+  await elFetch(`/convai/phone-numbers/${phoneNumberId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ agent_id: agentId }),
+  });
+}
+
 // --- Outbound Calls ---
 
 export function buildPaymentChasePrompt(input: {
@@ -445,7 +564,7 @@ export async function initiateOutboundCall(orgId: string, input: {
         },
       },
       to: input.phoneNumber,
-      from: org.phone_number ?? env.TWILIO_PHONE_NUMBER,
+      from: org.phone_number,
       metadata: {
         call_id: input.callId,
         chase_item_id: input.chaseItemId,
@@ -510,6 +629,16 @@ export async function provisionAgent(orgId: string): Promise<string> {
     .from("organisations")
     .update({ elevenlabs_agent_id: agentId })
     .eq("id", orgId);
+
+  // Auto-assign phone number if org has one linked
+  if ((org as Record<string, unknown>).elevenlabs_phone_number_id) {
+    try {
+      await assignPhoneToAgent((org as Record<string, unknown>).elevenlabs_phone_number_id as string, agentId);
+      logger.info({ orgId, agentId, phoneNumberId: (org as Record<string, unknown>).elevenlabs_phone_number_id }, "Phone number assigned to agent");
+    } catch (err) {
+      logger.error({ err, orgId, agentId }, "Failed to assign phone number to agent");
+    }
+  }
 
   logger.info({ orgId, agentId }, "ElevenLabs agent provisioned");
   return agentId;

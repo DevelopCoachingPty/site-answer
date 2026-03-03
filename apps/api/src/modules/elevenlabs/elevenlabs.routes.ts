@@ -9,16 +9,8 @@ import * as calendarService from "../calendar/calendar.service.js";
 import * as whatsappService from "../whatsapp/whatsapp.service.js";
 import * as screeningService from "../screening/screening.service.js";
 import { supabaseAdmin } from "../../lib/supabase.js";
-import { getQueue } from "../../lib/queue.js";
-import { QUEUE_NAMES, WARM_TRANSFER } from "../../config/constants.js";
-import {
-  findSessionByAgentId,
-  markWarmTransferPending,
-} from "../telephony/audio-bridge.js";
-import {
-  generateConferenceRoom,
-  initiateWarmTransfer,
-} from "../telephony/warm-transfer.service.js";
+import { processPostCall } from "../../services/post-call.service.js";
+import { processGhlSync } from "../../services/ghl-sync.service.js";
 import * as callsService from "../calls/calls.service.js";
 
 // Tool call base schema
@@ -165,15 +157,11 @@ const elevenlabsRoutes: FastifyPluginAsync = async (fastify) => {
     const payload = request.body as Record<string, unknown>;
     logger.info({ conversationId: payload.conversation_id }, "ElevenLabs post-call webhook received");
 
-    // Queue post-call processing
+    // Process post-call inline
     try {
-      const queue = getQueue(QUEUE_NAMES.POST_CALL);
-      await queue.add("process-call", payload, {
-        attempts: 3,
-        backoff: { type: "exponential", delay: 5000 },
-      });
+      await processPostCall(payload as unknown as Parameters<typeof processPostCall>[0]);
     } catch (err) {
-      logger.error({ err }, "Failed to queue post-call processing");
+      logger.error({ err }, "Post-call processing failed");
     }
 
     return reply.send({ status: "received" });
@@ -382,13 +370,28 @@ const elevenlabsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.send({ success: false, reason: "Organisation not found" });
       }
 
-      // For now, log the SMS. Will be sent via GHL when contact lookup returns contactId
+      // Send via GHL if CRM is connected
+      if (org.ghl_location_id && org.ghl_access_token_encrypted) {
+        try {
+          // Look up contact by phone number to get contactId
+          const contact = await ghlClient.lookupContact(org.id, org.ghl_location_id, parameters.phone_number);
+          if (contact?.id) {
+            await ghlClient.sendSms(org.id, contact.id as string, parameters.message);
+            logger.info({ orgId: org.id, contactId: contact.id }, "SMS sent via GHL");
+            return reply.send({ success: true, message: "SMS sent" });
+          }
+          logger.info({ orgId: org.id, phone: parameters.phone_number }, "SMS: contact not found in CRM, noted only");
+          return reply.send({ success: true, message: "SMS noted but contact not found in CRM" });
+        } catch (err) {
+          logger.warn({ err, orgId: org.id }, "SMS via GHL failed, logging only");
+        }
+      }
+
       logger.info(
         { orgId: org.id, phone: parameters.phone_number, message: parameters.message },
-        "SMS requested (queued)",
+        "SMS noted (CRM not connected)",
       );
-
-      return reply.send({ success: true });
+      return reply.send({ success: true, message: "SMS noted but CRM not connected" });
     },
   });
 
@@ -404,90 +407,7 @@ const elevenlabsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.send({ success: false });
       }
 
-      // --- Warm transfer path ---
-      if (org.warm_transfer_enabled && org.escalation_phone) {
-        const session = findSessionByAgentId(agent_id);
-
-        if (session?.callSid) {
-          const conferenceRoom = generateConferenceRoom(session.callId);
-          const callerName = parameters.caller_name ?? "A caller";
-          const builderName = org.builder_name ?? "the builder";
-
-          logger.info(
-            { orgId: org.id, callId: session.callId, conference: conferenceRoom },
-            "Initiating warm transfer",
-          );
-
-          // Record the action
-          await callsService.createCallAction({
-            call_id: session.callId,
-            organisation_id: org.id,
-            action_type: "warm_transfer",
-            payload: {
-              reason: parameters.reason,
-              caller_name: callerName,
-              caller_number: parameters.caller_number,
-              urgency_level: parameters.urgency_level ?? "normal",
-              builder_phone: org.escalation_phone,
-              conference_room: conferenceRoom,
-            },
-          });
-
-          // Update call record
-          await callsService.updateCall(session.callId, {
-            warm_transfer_status: "pending",
-            conference_room_name: conferenceRoom,
-            escalation_reason: parameters.reason,
-            escalated_at: new Date().toISOString(),
-          });
-
-          // Mark session for warm transfer
-          markWarmTransferPending(session.callId, {
-            conferenceRoom,
-            builderPhone: org.escalation_phone,
-            callerName,
-            callerNumber: parameters.caller_number,
-            reason: parameters.reason,
-            urgencyLevel: parameters.urgency_level ?? "normal",
-          });
-
-          // After delay (agent says goodbye), move caller into conference
-          if (session.warmTransfer) {
-            session.warmTransfer.status = "handoff_speaking";
-            session.warmTransfer.handoffTimerId = setTimeout(async () => {
-              try {
-                await initiateWarmTransfer({
-                  callId: session.callId,
-                  callSid: session.callSid,
-                  organisationId: org.id,
-                  orgPhoneNumber: org.phone_number ?? "",
-                  builderPhone: org.escalation_phone!,
-                  builderName,
-                  callerName,
-                  callerNumber: parameters.caller_number,
-                  reason: parameters.reason,
-                  urgencyLevel: parameters.urgency_level ?? "normal",
-                  conferenceRoom,
-                });
-              } catch (err) {
-                logger.error({ err, callId: session.callId }, "Warm transfer initiation failed");
-              }
-            }, WARM_TRANSFER.HANDOFF_DELAY_MS);
-          }
-
-          return reply.send({
-            success: true,
-            escalated: true,
-            warm_transfer: true,
-            builder_name: builderName,
-            message: `Tell the caller: "I'm going to connect you directly with ${builderName} now. Please hold for just a moment while I transfer you." Then stop talking.`,
-          });
-        }
-      }
-
-      // --- Fallback: SMS-only escalation ---
-
-      // Create notification
+      // Create in-app notification for the builder
       await supabaseAdmin.from("notifications").insert({
         organisation_id: org.id,
         type: "escalation",
@@ -495,24 +415,10 @@ const elevenlabsRoutes: FastifyPluginAsync = async (fastify) => {
         message: `${parameters.caller_name ?? "Caller"} (${parameters.caller_number}): ${parameters.reason}`,
       });
 
-      // If escalation SMS is enabled and escalation phone is set
-      if (org.escalation_sms && org.escalation_phone) {
-        logger.info(
-          { orgId: org.id, phone: org.escalation_phone },
-          "Escalation SMS to builder",
-        );
-        try {
-          const { sendSms } = await import("../telephony/twilio.client.js");
-          const fromNumber = org.phone_number ?? (await import("../../config/env.js")).env.TWILIO_PHONE_NUMBER;
-          if (fromNumber) {
-            const smsBody = `ESCALATION (${parameters.urgency_level ?? "normal"}): ${parameters.caller_name ?? "Caller"} (${parameters.caller_number}) - ${parameters.reason}`;
-            await sendSms(fromNumber, org.escalation_phone, smsBody);
-            logger.info({ orgId: org.id, to: org.escalation_phone }, "Escalation SMS sent");
-          }
-        } catch (smsErr) {
-          logger.error({ err: smsErr, orgId: org.id }, "Failed to send escalation SMS");
-        }
-      }
+      logger.info(
+        { orgId: org.id, reason: parameters.reason, urgency: parameters.urgency_level },
+        "Escalation notification created",
+      );
 
       return reply.send({ success: true, escalated: true });
     },
@@ -681,9 +587,13 @@ const elevenlabsRoutes: FastifyPluginAsync = async (fastify) => {
       };
 
       try {
-        // Find the call record by conversation_id or agent_id session
-        const session = findSessionByAgentId(agent_id);
-        const callId = session?.callId;
+        // Find the call record by conversation_id
+        const { data: callRecord } = await supabaseAdmin
+          .from("calls")
+          .select("id")
+          .eq("external_call_id", conversation_id)
+          .single();
+        const callId = callRecord?.id;
 
         if (callId) {
           // Update call record with screening outcome
@@ -705,11 +615,10 @@ const elevenlabsRoutes: FastifyPluginAsync = async (fastify) => {
           });
         }
 
-        // Queue GHL tag addition if contact_id is provided
+        // Sync GHL tag directly if contact_id is provided
         if (parameters.contact_id && org.ghl_access_token_encrypted) {
           try {
-            const ghlQueue = getQueue(QUEUE_NAMES.GHL_SYNC);
-            await ghlQueue.add("tag-contact", {
+            await processGhlSync({
               organisationId: org.id,
               callId: callId ?? "",
               actions: [{
@@ -720,12 +629,9 @@ const elevenlabsRoutes: FastifyPluginAsync = async (fastify) => {
                   notes: parameters.notes,
                 },
               }],
-            }, {
-              attempts: 3,
-              backoff: { type: "exponential", delay: 5000 },
             });
           } catch (err) {
-            logger.warn({ err, orgId: org.id }, "Failed to queue GHL tag sync");
+            logger.warn({ err, orgId: org.id }, "GHL tag sync failed (non-critical)");
           }
         }
 

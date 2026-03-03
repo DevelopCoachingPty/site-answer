@@ -1,8 +1,6 @@
 import { FastifyPluginAsync } from "fastify";
 import { Type, Static } from "@sinclair/typebox";
 import * as chaseService from "./chase.service.js";
-import { getQueue } from "../../lib/queue.js";
-import { QUEUE_NAMES } from "../../config/constants.js";
 
 const ChaseQuerystring = Type.Object({
   page: Type.Optional(Type.Integer({ minimum: 1, default: 1 })),
@@ -144,26 +142,11 @@ const chaseRoutes: FastifyPluginAsync = async (fastify) => {
     },
   });
 
-  // POST /payment-chase/:id/chase-now - Trigger immediate outbound call
+  // POST /payment-chase/:id/chase-now - Trigger immediate outbound call (Phase 2)
   fastify.post<{ Params: Static<typeof IdParams> }>("/:id/chase-now", {
     schema: { params: IdParams },
-    config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
-    handler: async (request, reply) => {
-      const item = await chaseService.getChaseItem(
-        request.organisationId!,
-        request.params.id,
-      );
-
-      const queue = getQueue(QUEUE_NAMES.PAYMENT_CHASE);
-      await queue.add("chase-call", {
-        chaseItemId: item.id,
-        organisationId: request.organisationId,
-      }, {
-        attempts: 2,
-        backoff: { type: "exponential", delay: 5000 },
-      });
-
-      return reply.send({ status: "queued", chase_item_id: item.id });
+    handler: async (_request, reply) => {
+      return reply.code(501).send({ error: "Payment chasing will be available in Phase 2" });
     },
   });
 };

@@ -1,8 +1,7 @@
 import { FastifyPluginAsync } from "fastify";
 import { Type, Static } from "@sinclair/typebox";
 import * as kbService from "./kb.service.js";
-import { getQueue } from "../../lib/queue.js";
-import { QUEUE_NAMES } from "../../config/constants.js";
+import { syncAgent } from "../../services/agent-sync.service.js";
 import { logger } from "../../lib/logger.js";
 
 const CreateKbBody = Type.Object({
@@ -22,21 +21,11 @@ const UpdateKbBody = Type.Object({
 
 const IdParams = Type.Object({ id: Type.String({ format: "uuid" }) });
 
-async function queueAgentSync(orgId: string) {
+async function triggerAgentSync(orgId: string) {
   try {
-    const queue = getQueue(QUEUE_NAMES.AGENT_SYNC);
-    await queue.add(
-      "sync",
-      { organisationId: orgId, trigger: "knowledge_base_updated" },
-      {
-        jobId: `agent-sync-${orgId}`, // Deduplicates rapid changes
-        attempts: 3,
-        backoff: { type: "exponential", delay: 5000 },
-        delay: 2000, // Wait 2s for batch changes
-      },
-    );
+    await syncAgent(orgId, "knowledge_base_updated");
   } catch (err) {
-    logger.warn({ err, orgId }, "Failed to queue agent sync (Redis may be unavailable)");
+    logger.warn({ err, orgId }, "Agent sync failed (non-critical)");
   }
 }
 
@@ -66,7 +55,7 @@ const kbRoutes: FastifyPluginAsync = async (fastify) => {
         request.organisationId!,
         request.body,
       );
-      await queueAgentSync(request.organisationId!);
+      await triggerAgentSync(request.organisationId!);
       return reply.code(201).send({ data: entry });
     },
   });
@@ -80,7 +69,7 @@ const kbRoutes: FastifyPluginAsync = async (fastify) => {
         request.params.id,
         request.body,
       );
-      await queueAgentSync(request.organisationId!);
+      await triggerAgentSync(request.organisationId!);
       return reply.send({ data: entry });
     },
   });
@@ -93,7 +82,7 @@ const kbRoutes: FastifyPluginAsync = async (fastify) => {
         request.organisationId!,
         request.params.id,
       );
-      await queueAgentSync(request.organisationId!);
+      await triggerAgentSync(request.organisationId!);
       return reply.code(204).send();
     },
   });

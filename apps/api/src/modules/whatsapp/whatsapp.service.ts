@@ -1,44 +1,14 @@
 /**
  * WhatsApp Service
  *
- * Send templated and freeform WhatsApp messages via Twilio.
+ * Manages WhatsApp templates and message records.
+ * Actual sending is deferred to Phase 2 (requires WhatsApp provider configuration).
  */
 
 import { supabaseAdmin } from "../../lib/supabase.js";
-import { env } from "../../config/env.js";
 import { ExternalServiceError } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "../../config/constants.js";
-
-const TWILIO_API = "https://api.twilio.com/2010-04-01";
-
-// --- Twilio WhatsApp ---
-
-async function twilioFetch(orgId: string, path: string, body: Record<string, string>) {
-  const accountSid = env.TWILIO_ACCOUNT_SID;
-  const authToken = env.TWILIO_AUTH_TOKEN;
-
-  if (!accountSid || !authToken) {
-    throw new ExternalServiceError("Twilio", "Credentials not configured");
-  }
-
-  const response = await fetch(`${TWILIO_API}/Accounts/${accountSid}${path}`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams(body).toString(),
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    logger.error({ orgId, status: response.status, body: text }, "Twilio WhatsApp API error");
-    throw new ExternalServiceError("Twilio", `API error (${response.status}): ${text}`);
-  }
-
-  return response.json();
-}
 
 // --- Template Management ---
 
@@ -167,35 +137,9 @@ export async function sendMessage(
 
   if (insertError) throw new ExternalServiceError("Database", `Failed to create message: ${insertError.message}`);
 
-  // Send via Twilio
-  try {
-    const from = `whatsapp:${org.whatsapp_phone_number}`;
-    const toWhatsApp = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`;
-
-    const result = await twilioFetch(orgId, "/Messages.json", {
-      From: from,
-      To: toWhatsApp,
-      Body: body,
-    }) as { sid: string };
-
-    // Update message with Twilio SID
-    await supabaseAdmin
-      .from("whatsapp_messages")
-      .update({ twilio_sid: result.sid, status: "sent" })
-      .eq("id", message!.id);
-
-    logger.info({ orgId, messageId: message!.id, twilioSid: result.sid }, "WhatsApp message sent");
-    return { ...message, twilio_sid: result.sid, status: "sent" };
-  } catch (err) {
-    // Update message with error
-    await supabaseAdmin
-      .from("whatsapp_messages")
-      .update({ status: "failed", error_message: String(err) })
-      .eq("id", message!.id);
-
-    logger.error({ err, orgId, messageId: message!.id }, "Failed to send WhatsApp message");
-    return { ...message, status: "failed", error_message: String(err) };
-  }
+  // WhatsApp sending deferred to Phase 2 — message saved to DB with "pending" status
+  logger.info({ orgId, messageId: message!.id, to }, "WhatsApp message saved (sending not yet configured)");
+  return { ...message, status: "queued" };
 }
 
 // --- Message History ---

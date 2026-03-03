@@ -3,8 +3,6 @@ import { Type, Static } from "@sinclair/typebox";
 import * as xeroClient from "./xero.client.js";
 import * as qbClient from "./quickbooks.client.js";
 import { supabaseAdmin } from "../../lib/supabase.js";
-import { getQueue } from "../../lib/queue.js";
-import { QUEUE_NAMES } from "../../config/constants.js";
 import { logger } from "../../lib/logger.js";
 
 const ProviderQuery = Type.Object({
@@ -97,20 +95,9 @@ const accountingRoutes: FastifyPluginAsync = async (fastify) => {
     });
   });
 
-  // POST /accounting/sync - Manual trigger
-  fastify.post("/sync", async (request, reply) => {
-    const orgId = request.organisationId!;
-
-    const queue = getQueue(QUEUE_NAMES.INVOICE_SYNC);
-    await queue.add("manual-sync", {
-      organisationId: orgId,
-      syncType: "manual",
-    }, {
-      attempts: 2,
-      backoff: { type: "exponential", delay: 5000 },
-    });
-
-    return reply.send({ status: "queued" });
+  // POST /accounting/sync - Manual trigger (Phase 2)
+  fastify.post("/sync", async (_request, reply) => {
+    return reply.code(501).send({ error: "Automatic invoice sync will be available in Phase 2" });
   });
 
   // GET /accounting/sync/history

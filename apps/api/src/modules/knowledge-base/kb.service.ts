@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "../../lib/supabase.js";
 import { NotFoundError, ExternalServiceError } from "../../lib/errors.js";
+import { CONSTRUCTION_KB_TEMPLATES } from "./kb-templates.js";
 
 export async function listKnowledgeBase(orgId: string, category?: string) {
   let query = supabaseAdmin
@@ -92,6 +93,28 @@ export async function deleteKnowledgeBaseEntry(orgId: string, entryId: string) {
   if (error) {
     throw new ExternalServiceError("Database", `Failed to delete KB entry: ${error.message}`);
   }
+}
+
+export async function seedDefaultKnowledgeBase(orgId: string) {
+  // Check if org already has KB entries
+  const { data: existing } = await supabaseAdmin
+    .from("knowledge_base")
+    .select("id")
+    .eq("organisation_id", orgId)
+    .limit(1);
+
+  if (existing && existing.length > 0) return;
+
+  const entries = CONSTRUCTION_KB_TEMPLATES.map((t) => ({
+    organisation_id: orgId,
+    category: t.category,
+    title: t.title,
+    content: t.content,
+    sort_order: t.sort_order,
+    is_active: true,
+  }));
+
+  await supabaseAdmin.from("knowledge_base").insert(entries);
 }
 
 export async function getActiveKnowledgeBase(orgId: string) {

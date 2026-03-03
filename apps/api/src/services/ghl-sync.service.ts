@@ -1,20 +1,16 @@
 /**
- * GHL Sync Worker
+ * GHL Sync Service
  *
- * Handles all GoHighLevel API operations with rate limiting.
- * Separate worker to avoid blocking the main event loop and
- * to respect GHL's rate limits (100 req/10s per resource).
+ * Handles GoHighLevel API operations inline (no queue).
+ * Called from post-call processing and tag_call_outcome tool handler.
  */
 
-import { Worker, type Job } from "bullmq";
 import { logger } from "../lib/logger.js";
-import { env } from "../config/env.js";
-import { QUEUE_NAMES } from "../config/constants.js";
 import * as ghlClient from "../modules/ghl/ghl.client.js";
 import * as callsService from "../modules/calls/calls.service.js";
 import { supabaseAdmin } from "../lib/supabase.js";
 
-export interface GhlSyncJob {
+export interface GhlSyncData {
   organisationId: string;
   callId: string;
   actions: Array<{
@@ -23,11 +19,26 @@ export interface GhlSyncJob {
   }>;
 }
 
-async function processGhlSync(job: Job<GhlSyncJob>) {
-  const log = logger.child({ jobId: job.id, orgId: job.data.organisationId });
-  log.info("Processing GHL sync job");
+async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
+  try {
+    return await fn();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Retry once on transient errors (429, 503)
+    if (msg.includes("429") || msg.includes("503")) {
+      logger.warn({ label }, "Transient GHL error, retrying in 2s");
+      await new Promise((r) => setTimeout(r, 2000));
+      return fn();
+    }
+    throw err;
+  }
+}
 
-  const { organisationId, callId, actions } = job.data;
+export async function processGhlSync(data: GhlSyncData): Promise<void> {
+  const log = logger.child({ orgId: data.organisationId });
+  log.info("Processing GHL sync");
+
+  const { organisationId, callId, actions } = data;
 
   // Get org details for GHL location
   const { data: org } = await supabaseAdmin
@@ -48,13 +59,15 @@ async function processGhlSync(job: Job<GhlSyncJob>) {
     try {
       switch (action.type) {
         case "create_new_contact": {
-          // Already created during the call, just log activity
           const contactId = action.data.contact_id as string | undefined;
           if (contactId) {
-            await ghlClient.addContactNote(
-              organisationId,
-              contactId,
-              `SiteAnswer call summary:\n${call.summary ?? "No summary available"}\nDuration: ${call.duration_seconds ?? 0}s`,
+            await withRetry(
+              () => ghlClient.addContactNote(
+                organisationId,
+                contactId,
+                `SiteAnswer call summary:\n${call.summary ?? "No summary available"}\nDuration: ${call.duration_seconds ?? 0}s`,
+              ),
+              "create_new_contact_note",
             );
           }
           break;
@@ -63,17 +76,19 @@ async function processGhlSync(job: Job<GhlSyncJob>) {
         case "lookup_caller": {
           const contactId = action.data.contact_id as string | undefined;
           if (contactId) {
-            await ghlClient.addContactNote(
-              organisationId,
-              contactId,
-              `SiteAnswer call received\nType: ${call.flow_type ?? "unknown"}\nSummary: ${call.summary ?? "N/A"}`,
+            await withRetry(
+              () => ghlClient.addContactNote(
+                organisationId,
+                contactId,
+                `SiteAnswer call received\nType: ${call.flow_type ?? "unknown"}\nSummary: ${call.summary ?? "N/A"}`,
+              ),
+              "lookup_caller_note",
             );
           }
           break;
         }
 
         case "escalate_to_builder": {
-          // Log escalation in GHL as a note on the contact if available
           log.warn({ action }, "Escalation synced to GHL");
           break;
         }
@@ -84,14 +99,13 @@ async function processGhlSync(job: Job<GhlSyncJob>) {
           const notes = action.data.notes as string | undefined;
 
           if (contactId && tag) {
-            await ghlClient.addContactTag(organisationId, contactId, [tag]);
+            await withRetry(() => ghlClient.addContactTag(organisationId, contactId, [tag]), "tag_contact");
             log.info({ contactId, tag }, "GHL tag applied");
 
             if (notes) {
-              await ghlClient.addContactNote(
-                organisationId,
-                contactId,
-                `SiteAnswer screening: ${tag}\n${notes}`,
+              await withRetry(
+                () => ghlClient.addContactNote(organisationId, contactId, `SiteAnswer screening: ${tag}\n${notes}`),
+                "tag_contact_note",
               );
             }
           }
@@ -99,19 +113,17 @@ async function processGhlSync(job: Job<GhlSyncJob>) {
         }
 
         case "tag_call_outcome": {
-          // Tag the contact with the screening outcome
           const outcomeContactId = action.data.contact_id as string | undefined;
           const outcomeTag = action.data.ghl_tag as string | undefined;
 
           if (outcomeContactId && outcomeTag) {
-            await ghlClient.addContactTag(organisationId, outcomeContactId, [outcomeTag]);
+            await withRetry(() => ghlClient.addContactTag(organisationId, outcomeContactId, [outcomeTag]), "tag_outcome");
 
-            // Add a note with call summary
             const noteText = `SiteAnswer call outcome: ${action.data.outcome ?? outcomeTag}\n${
               call.summary ? `Summary: ${call.summary}` : ""
             }\nDuration: ${call.duration_seconds ?? 0}s`;
 
-            await ghlClient.addContactNote(organisationId, outcomeContactId, noteText);
+            await withRetry(() => ghlClient.addContactNote(organisationId, outcomeContactId, noteText), "tag_outcome_note");
             log.info({ contactId: outcomeContactId, tag: outcomeTag }, "Screening outcome tagged in GHL");
           }
           break;
@@ -127,29 +139,4 @@ async function processGhlSync(job: Job<GhlSyncJob>) {
   }
 
   log.info({ callId, actionCount: actions.length }, "GHL sync complete");
-}
-
-export function startGhlSyncWorker() {
-  const worker = new Worker<GhlSyncJob>(
-    QUEUE_NAMES.GHL_SYNC,
-    processGhlSync,
-    {
-      connection: { url: env.REDIS_URL },
-      concurrency: 2,
-      limiter: {
-        max: 10,
-        duration: 1000, // 10 jobs per second to stay under GHL rate limits
-      },
-    },
-  );
-
-  worker.on("completed", (job) => {
-    logger.info({ jobId: job.id }, "GHL sync job completed");
-  });
-
-  worker.on("failed", (job, err) => {
-    logger.error({ jobId: job?.id, err }, "GHL sync job failed");
-  });
-
-  return worker;
 }

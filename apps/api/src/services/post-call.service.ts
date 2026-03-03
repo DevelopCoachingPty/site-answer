@@ -1,25 +1,22 @@
 /**
- * Post-Call Processing Worker
+ * Post-Call Processing Service
  *
- * Processes completed calls:
+ * Processes completed calls inline (no queue):
  * 1. Save transcript and summary to call record
  * 2. Process tool call results into call_actions
- * 3. Queue GHL sync (separate queue for rate limiting)
+ * 3. Run GHL sync directly if connected
  * 4. Update usage tracking
- * 5. Send notifications if needed
+ * 5. Send WhatsApp notifications if enabled
  */
 
-import { Worker, type Job } from "bullmq";
 import { logger } from "../lib/logger.js";
-import { env } from "../config/env.js";
-import { QUEUE_NAMES } from "../config/constants.js";
 import * as callsService from "../modules/calls/calls.service.js";
 import * as usageService from "../modules/usage/usage.service.js";
 import * as orgService from "../modules/organisations/org.service.js";
 import * as whatsappService from "../modules/whatsapp/whatsapp.service.js";
-import { getQueue } from "../lib/queue.js";
+import { processGhlSync } from "./ghl-sync.service.js";
 
-export interface PostCallJob {
+export interface PostCallData {
   conversation_id: string;
   agent_id: string;
   transcript?: Array<{ role: string; message: string; timestamp?: number }>;
@@ -33,11 +30,11 @@ export interface PostCallJob {
   metadata?: Record<string, unknown>;
 }
 
-async function processPostCall(job: Job<PostCallJob>) {
-  const log = logger.child({ jobId: job.id, conversationId: job.data.conversation_id });
-  log.info("Processing post-call job");
+export async function processPostCall(data: PostCallData): Promise<void> {
+  const log = logger.child({ conversationId: data.conversation_id });
+  log.info("Processing post-call");
 
-  const { agent_id, conversation_id, transcript, summary, tool_calls, duration_seconds } = job.data;
+  const { agent_id, conversation_id, transcript, summary, tool_calls, duration_seconds } = data;
 
   // Resolve organisation from agent_id
   const org = await orgService.getOrganisationByAgentId(agent_id);
@@ -102,23 +99,19 @@ async function processPostCall(job: Job<PostCallJob>) {
     }
   }
 
-  // 3. Queue GHL sync if applicable
+  // 3. GHL sync directly if applicable
   if (org.ghl_access_token_encrypted && tool_calls?.length) {
     try {
-      const ghlQueue = getQueue(QUEUE_NAMES.GHL_SYNC);
-      await ghlQueue.add("sync-call", {
+      await processGhlSync({
         organisationId: org.id,
         callId: call.id,
         actions: tool_calls.map((tc) => ({
           type: tc.tool_name,
           data: { ...tc.parameters, ...tc.result },
         })),
-      }, {
-        attempts: 3,
-        backoff: { type: "exponential", delay: 5000 },
       });
     } catch (err) {
-      log.error({ err }, "Failed to queue GHL sync");
+      log.error({ err }, "GHL sync failed (non-critical)");
     }
   }
 
@@ -175,25 +168,4 @@ async function getCallerNumber(callId: string): Promise<string | null> {
     .eq("id", callId)
     .single();
   return data?.caller_number ?? null;
-}
-
-export function startPostCallWorker() {
-  const worker = new Worker<PostCallJob>(
-    QUEUE_NAMES.POST_CALL,
-    processPostCall,
-    {
-      connection: { url: env.REDIS_URL },
-      concurrency: 5,
-    },
-  );
-
-  worker.on("completed", (job) => {
-    logger.info({ jobId: job.id }, "Post-call job completed");
-  });
-
-  worker.on("failed", (job, err) => {
-    logger.error({ jobId: job?.id, err }, "Post-call job failed");
-  });
-
-  return worker;
 }
