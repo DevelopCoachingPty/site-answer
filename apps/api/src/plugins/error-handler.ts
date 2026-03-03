@@ -15,7 +15,7 @@ async function getSentry() {
       dsn: env.SENTRY_DSN,
       environment: env.NODE_ENV,
       tracesSampleRate: env.NODE_ENV === "production" ? 0.1 : 1.0,
-    });
+    } as Parameters<typeof Sentry.init>[0]);
     sentryInstance = Sentry;
     return Sentry;
   } catch {
