@@ -130,12 +130,12 @@ export async function createAgent(orgId: string, orgName: string): Promise<strin
           model: "scribe_v2",
         },
         tts: {
-          model_id: "eleven_turbo_v2_5",
+          model_id: "eleven_turbo_v2",
           voice_id: env.ELEVENLABS_DEFAULT_VOICE_ID ?? "21m00Tcm4TlvDq8ikWAM",
           optimize_streaming_latency: 3,
         },
         turn: {
-          mode: "turn_based",
+          mode: "turn",
         },
       },
       platform_settings: {

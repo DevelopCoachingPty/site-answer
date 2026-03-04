@@ -10,3 +10,9 @@ export const GHL_RATE_LIMIT = {
   windowMs: 10_000, // 10 seconds
   dailyMax: 200_000,
 };
+
+export const WARM_TRANSFER = {
+  HOLD_MUSIC_URL: "http://twimlets.com/holdmusic?Bucket=com.twilio.music.classical",
+  BUILDER_TIMEOUT_MS: 20_000, // 20 seconds to answer
+  HANDOFF_DELAY_MS: 8_000, // 8 seconds for agent to say goodbye
+};
