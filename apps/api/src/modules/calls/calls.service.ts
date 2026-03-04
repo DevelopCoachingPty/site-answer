@@ -123,10 +123,19 @@ export async function updateCall(callId: string, updates: Record<string, unknown
   return data;
 }
 
-export async function getCallStats(orgId: string) {
+export async function getCallStats(orgId: string, range?: string) {
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-  const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay()).toISOString();
+
+  // Calculate period start based on range
+  let periodStart: string;
+  if (range === "month") {
+    periodStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  } else {
+    // Default: "week"
+    periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay()).toISOString();
+  }
+  const weekStart = periodStart;
 
   // Today's calls
   const { data: todayCalls } = await supabaseAdmin

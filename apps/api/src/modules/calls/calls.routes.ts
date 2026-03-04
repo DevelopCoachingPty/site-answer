@@ -39,9 +39,16 @@ const callRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /calls/stats - Dashboard statistics
-  fastify.get("/stats", async (request, reply) => {
-    const stats = await callsService.getCallStats(request.organisationId!);
-    return reply.send(stats);
+  fastify.get<{ Querystring: { range?: string } }>("/stats", {
+    schema: {
+      querystring: Type.Object({
+        range: Type.Optional(Type.String()),
+      }),
+    },
+    handler: async (request, reply) => {
+      const stats = await callsService.getCallStats(request.organisationId!, request.query.range);
+      return reply.send(stats);
+    },
   });
 
   // GET /calls/:id - Full call detail

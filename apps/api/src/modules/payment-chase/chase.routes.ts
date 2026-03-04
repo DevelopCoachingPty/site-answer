@@ -1,6 +1,8 @@
 import { FastifyPluginAsync } from "fastify";
 import { Type, Static } from "@sinclair/typebox";
 import * as chaseService from "./chase.service.js";
+import * as callsService from "../calls/calls.service.js";
+import { initiateOutboundCall } from "../elevenlabs/elevenlabs.client.js";
 
 const ChaseQuerystring = Type.Object({
   page: Type.Optional(Type.Integer({ minimum: 1, default: 1 })),
@@ -142,11 +144,50 @@ const chaseRoutes: FastifyPluginAsync = async (fastify) => {
     },
   });
 
-  // POST /payment-chase/:id/chase-now - Trigger immediate outbound call (Phase 2)
+  // POST /payment-chase/:id/chase-now - Trigger immediate outbound call
   fastify.post<{ Params: Static<typeof IdParams> }>("/:id/chase-now", {
     schema: { params: IdParams },
-    handler: async (_request, reply) => {
-      return reply.code(501).send({ error: "Payment chasing will be available in Phase 2" });
+    handler: async (request, reply) => {
+      const orgId = request.organisationId!;
+      const item = await chaseService.getChaseItem(orgId, request.params.id);
+
+      if (!item) {
+        return reply.code(404).send({ error: "Chase item not found" });
+      }
+
+      if (item.status === "paid" || item.status === "cancelled") {
+        return reply.code(400).send({ error: `Cannot chase item with status: ${item.status}` });
+      }
+
+      // Create a call record for tracking
+      const call = await callsService.createCall({
+        organisation_id: orgId,
+        direction: "outbound",
+        caller_number: item.contact_phone,
+        caller_name: item.contact_name,
+        flow_type: "payment_chase",
+      });
+
+      // Initiate outbound call via ElevenLabs
+      const result = await initiateOutboundCall(orgId, {
+        phoneNumber: item.contact_phone,
+        contactName: item.contact_name,
+        invoiceReference: item.invoice_reference ?? undefined,
+        amountDue: item.amount_due ?? undefined,
+        daysOverdue: item.days_overdue ?? undefined,
+        chaseCount: item.chase_count ?? 0,
+        callId: call.id,
+        chaseItemId: item.id,
+      });
+
+      // Update chase item status
+      await chaseService.updateChaseItem(orgId, item.id, { status: "in_progress" });
+
+      return reply.send({
+        message: "Chase call initiated",
+        conversation_id: result.conversation_id,
+        call_id: call.id,
+      });
     },
   });
 };

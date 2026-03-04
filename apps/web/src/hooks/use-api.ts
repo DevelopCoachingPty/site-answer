@@ -25,7 +25,14 @@ export function useApi<T>(path: string, params?: Record<string, string | number 
       const result = await api.get<T>(path, params);
       setData(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Request failed");
+      // Retry once on 5xx or network errors
+      try {
+        await new Promise((r) => setTimeout(r, 2000));
+        const result = await api.get<T>(path, params);
+        setData(result);
+      } catch (retryErr) {
+        setError(retryErr instanceof Error ? retryErr.message : "Request failed");
+      }
     } finally {
       setLoading(false);
     }

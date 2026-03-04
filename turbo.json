@@ -1,9 +1,32 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalEnv": ["NODE_ENV"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
+      "env": [
+        "SUPABASE_URL",
+        "SUPABASE_ANON_KEY",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "ENCRYPTION_KEY",
+        "FRONTEND_URL",
+        "ELEVENLABS_API_KEY",
+        "GHL_REDIRECT_URI",
+        "XERO_REDIRECT_URI",
+        "QB_REDIRECT_URI",
+        "GOOGLE_REDIRECT_URI",
+        "MS_REDIRECT_URI",
+        "SENTRY_DSN",
+        "API_BASE_URL",
+        "PORT",
+        "HOST",
+        "LOG_LEVEL",
+        "NEXT_PUBLIC_API_URL",
+        "NEXT_PUBLIC_SUPABASE_URL",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+        "NEXT_PUBLIC_SENTRY_DSN"
+      ]
     },
     "dev": {
       "cache": false,

@@ -157,6 +157,57 @@ export async function processPostCall(data: PostCallData): Promise<void> {
     log.warn({ err }, "WhatsApp post-call message failed (non-critical)");
   }
 
+  // 6. Notify builder via SMS + in-app notification
+  try {
+    const { data: orgNotify } = await supabaseAdmin
+      .from("organisations")
+      .select("escalation_phone, escalation_sms_enabled, ghl_location_id, ghl_access_token_encrypted, name")
+      .eq("id", org.id)
+      .single();
+
+    const callerNumber = await getCallerNumber(call.id);
+    const shortSummary = summary
+      ? summary.length > 120 ? summary.slice(0, 117) + "..." : summary
+      : "No summary available";
+
+    // Always create in-app notification
+    await supabaseAdmin.from("notifications").insert({
+      organisation_id: org.id,
+      type: "call_completed",
+      title: `Call from ${callerNumber ?? "unknown"}`,
+      message: shortSummary,
+      is_read: false,
+    });
+
+    // Send SMS to builder if enabled and GHL connected
+    if (
+      orgNotify?.escalation_sms_enabled &&
+      orgNotify.escalation_phone &&
+      orgNotify.ghl_access_token_encrypted &&
+      orgNotify.ghl_location_id
+    ) {
+      const { lookupContact, createContact, sendSms: ghlSendSms } = await import("../modules/ghl/ghl.client.js");
+      const smsMessage = `SiteAnswer: New call from ${callerNumber ?? "unknown"} — ${shortSummary}`;
+
+      // Find or create the builder as a GHL contact to send SMS
+      let builderContact = await lookupContact(org.id, orgNotify.ghl_location_id, orgNotify.escalation_phone);
+      if (!builderContact) {
+        builderContact = await createContact(org.id, orgNotify.ghl_location_id, {
+          name: orgNotify.name ?? "Builder",
+          phone: orgNotify.escalation_phone,
+          tags: ["siteanswer-builder"],
+        });
+      }
+
+      if (builderContact?.id) {
+        await ghlSendSms(org.id, builderContact.id as string, smsMessage);
+        log.info({ phone: orgNotify.escalation_phone }, "Post-call SMS sent to builder");
+      }
+    }
+  } catch (err) {
+    log.warn({ err }, "Builder notification failed (non-critical)");
+  }
+
   log.info({ callId: call.id, orgId: org.id }, "Post-call processing complete");
 }
 
