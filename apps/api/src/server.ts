@@ -46,9 +46,11 @@ export async function buildServer() {
   });
 
   // Allow both the configured FRONTEND_URL and API_BASE_URL origin for CORS
-  const allowedOrigins = [env.FRONTEND_URL];
-  if (env.API_BASE_URL && env.API_BASE_URL !== env.FRONTEND_URL) {
-    allowedOrigins.push(env.API_BASE_URL);
+  // Strip trailing slashes to prevent mismatch with browser Origin header
+  const stripSlash = (url: string) => url.replace(/\/+$/, "");
+  const allowedOrigins = [stripSlash(env.FRONTEND_URL)];
+  if (env.API_BASE_URL && stripSlash(env.API_BASE_URL) !== stripSlash(env.FRONTEND_URL)) {
+    allowedOrigins.push(stripSlash(env.API_BASE_URL));
   }
 
   await app.register(cors, {
