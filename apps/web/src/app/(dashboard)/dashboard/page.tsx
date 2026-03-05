@@ -66,7 +66,7 @@ export default function DashboardPage() {
         </div>
       ) : statsError ? (
         <div className="rounded-lg border border-[var(--destructive)] bg-red-50 p-6 mb-8 text-center">
-          <p className="text-sm text-[var(--destructive)]">Failed to load stats</p>
+          <p className="text-sm text-[var(--destructive)]">Failed to load stats: {statsError}</p>
           <button onClick={refetchStats} className="mt-2 text-sm text-[var(--primary)] hover:underline">Try again</button>
         </div>
       ) : (
@@ -124,7 +124,7 @@ export default function DashboardPage() {
           </div>
         ) : callsError ? (
           <div className="p-6 text-center">
-            <p className="text-sm text-[var(--destructive)]">Failed to load recent calls</p>
+            <p className="text-sm text-[var(--destructive)]">Failed to load recent calls: {callsError}</p>
             <button onClick={refetchCalls} className="mt-2 text-sm text-[var(--primary)] hover:underline">Try again</button>
           </div>
         ) : recentCalls?.data && recentCalls.data.length > 0 ? (
