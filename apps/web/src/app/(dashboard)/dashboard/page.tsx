@@ -164,7 +164,7 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="p-6 text-center text-[var(--muted-foreground)]">
-            <p>No calls yet. Once SiteAnswer is active, your call history will appear here.</p>
+            <p>No calls yet. Once SiteAnswer is active, call history will appear here.</p>
           </div>
         )}
       </div>
