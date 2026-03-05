@@ -45,16 +45,18 @@ export async function buildServer() {
     contentSecurityPolicy: false, // CSP handled by Next.js frontend
   });
 
-  // Allow both the configured FRONTEND_URL and API_BASE_URL origin for CORS
-  // Strip trailing slashes to prevent mismatch with browser Origin header
+  // CORS: allow configured frontend, API base URL, and any Vercel preview URLs
   const stripSlash = (url: string) => url.replace(/\/+$/, "");
-  const allowedOrigins = [stripSlash(env.FRONTEND_URL)];
-  if (env.API_BASE_URL && stripSlash(env.API_BASE_URL) !== stripSlash(env.FRONTEND_URL)) {
-    allowedOrigins.push(stripSlash(env.API_BASE_URL));
-  }
+  const allowedOrigins = new Set<string>();
+  allowedOrigins.add(stripSlash(env.FRONTEND_URL));
+  if (env.API_BASE_URL) allowedOrigins.add(stripSlash(env.API_BASE_URL));
+  // Always allow the known production URLs
+  allowedOrigins.add("https://siteanswer-web-three.vercel.app");
+  allowedOrigins.add("https://siteanswer-api.vercel.app");
+  allowedOrigins.add("http://localhost:3000");
 
   await app.register(cors, {
-    origin: allowedOrigins,
+    origin: [...allowedOrigins],
     credentials: true,
   });
 
