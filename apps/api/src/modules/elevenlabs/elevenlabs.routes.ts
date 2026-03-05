@@ -1,6 +1,8 @@
+import { createHmac } from "node:crypto";
 import { FastifyPluginAsync } from "fastify";
 import { Type, Static } from "@sinclair/typebox";
 import { logger } from "../../lib/logger.js";
+import { env } from "../../config/env.js";
 import * as orgService from "../organisations/org.service.js";
 import * as kbService from "../knowledge-base/kb.service.js";
 import * as ghlClient from "../ghl/ghl.client.js";
@@ -154,6 +156,27 @@ const elevenlabsRoutes: FastifyPluginAsync = async (fastify) => {
   });
   // POST /webhooks/elevenlabs/post-call
   fastify.post("/post-call", async (request, reply) => {
+    // Verify ElevenLabs webhook signature if secret is configured
+    if (env.ELEVENLABS_WEBHOOK_SECRET) {
+      const signature = request.headers["elevenlabs-signature"] as string | undefined;
+      if (!signature) {
+        logger.warn("ElevenLabs post-call webhook missing signature header");
+        return reply.code(401).send({ error: "Missing signature" });
+      }
+
+      const rawBody = JSON.stringify(request.body);
+      const expected = createHmac("sha256", env.ELEVENLABS_WEBHOOK_SECRET)
+        .update(rawBody)
+        .digest("hex");
+
+      // ElevenLabs signature format: "v0=<hex>"
+      const sigValue = signature.startsWith("v0=") ? signature.slice(3) : signature;
+      if (sigValue !== expected) {
+        logger.warn("ElevenLabs post-call webhook signature mismatch");
+        return reply.code(401).send({ error: "Invalid signature" });
+      }
+    }
+
     const payload = request.body as Record<string, unknown>;
     logger.info({ conversationId: payload.conversation_id }, "ElevenLabs post-call webhook received");
 

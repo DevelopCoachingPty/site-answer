@@ -45,8 +45,14 @@ export async function buildServer() {
     contentSecurityPolicy: false, // CSP handled by Next.js frontend
   });
 
+  // Allow both the configured FRONTEND_URL and API_BASE_URL origin for CORS
+  const allowedOrigins = [env.FRONTEND_URL];
+  if (env.API_BASE_URL && env.API_BASE_URL !== env.FRONTEND_URL) {
+    allowedOrigins.push(env.API_BASE_URL);
+  }
+
   await app.register(cors, {
-    origin: [env.FRONTEND_URL],
+    origin: allowedOrigins,
     credentials: true,
   });
 

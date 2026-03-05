@@ -15,11 +15,13 @@ const envSchema = z.object({
   // ElevenLabs
   ELEVENLABS_API_KEY: z.string().min(1).optional(),
   ELEVENLABS_DEFAULT_VOICE_ID: z.string().optional(),
+  ELEVENLABS_WEBHOOK_SECRET: z.string().optional(),
 
   // Twilio
   TWILIO_ACCOUNT_SID: z.string().startsWith("AC").optional(),
   TWILIO_AUTH_TOKEN: z.string().min(1).optional(),
   TWILIO_PHONE_NUMBER: z.string().startsWith("+").optional(),
+  TWILIO_WHATSAPP_NUMBER: z.string().startsWith("+").optional(),
 
   // GoHighLevel
   GHL_CLIENT_ID: z.string().optional(),

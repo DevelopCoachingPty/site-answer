@@ -43,16 +43,32 @@ export async function processPostCall(data: PostCallData): Promise<void> {
     return;
   }
 
-  // Find the call record by conversation_id
+  // Find or create the call record by conversation_id
   const { supabaseAdmin } = await import("../lib/supabase.js");
-  const { data: call } = await supabaseAdmin
+  let { data: call } = await supabaseAdmin
     .from("calls")
     .select("id")
     .eq("external_call_id", conversation_id)
     .single();
 
+  // If no call record exists (e.g. ElevenLabs phone number, no Twilio webhook), create one
   if (!call) {
-    log.warn({ conversationId: conversation_id }, "No call record found");
+    log.info({ conversationId: conversation_id, orgId: org.id }, "No call record found, creating from post-call data");
+
+    const callerNumber = extractCallerNumber(data);
+
+    call = await callsService.createCall({
+      organisation_id: org.id,
+      external_call_id: conversation_id,
+      direction: "inbound",
+      caller_number: callerNumber ?? undefined,
+      flow_type: "new_inquiry",
+    });
+  }
+
+  // Safety check — should never happen after create, but satisfies TypeScript
+  if (!call) {
+    log.error("Failed to find or create call record");
     return;
   }
 
@@ -76,6 +92,12 @@ export async function processPostCall(data: PostCallData): Promise<void> {
 
   if (duration_seconds) {
     updates.duration_seconds = duration_seconds;
+  }
+
+  // Extract caller name from tool calls if not already on the record
+  const callerName = extractCallerName(data);
+  if (callerName) {
+    updates.caller_name = callerName;
   }
 
   // Extract screening outcome from tool calls if present
@@ -209,6 +231,50 @@ export async function processPostCall(data: PostCallData): Promise<void> {
   }
 
   log.info({ callId: call.id, orgId: org.id }, "Post-call processing complete");
+}
+
+/** Extract caller name from post-call data (tool calls) */
+function extractCallerName(data: PostCallData): string | null {
+  if (data.tool_calls) {
+    for (const tc of data.tool_calls) {
+      if (tc.tool_name === "create_new_contact" && tc.parameters.name) {
+        return tc.parameters.name as string;
+      }
+      if (tc.tool_name === "lookup_caller" && tc.result?.name) {
+        return tc.result.name as string;
+      }
+      if (tc.tool_name === "log_message" && tc.parameters.caller_name) {
+        return tc.parameters.caller_name as string;
+      }
+    }
+  }
+  return null;
+}
+
+/** Extract caller phone number from post-call data (metadata or tool calls) */
+function extractCallerNumber(data: PostCallData): string | null {
+  // Check metadata first (e.g. outbound calls store it there)
+  const meta = data.metadata as Record<string, unknown> | undefined;
+  if (meta?.caller_number) return meta.caller_number as string;
+  if (meta?.from) return meta.from as string;
+  if (meta?.to) return meta.to as string;
+
+  // Check tool calls — lookup_caller and create_new_contact contain the phone number
+  if (data.tool_calls) {
+    for (const tc of data.tool_calls) {
+      if (tc.tool_name === "lookup_caller" && tc.parameters.phone_number) {
+        return tc.parameters.phone_number as string;
+      }
+      if (tc.tool_name === "create_new_contact" && tc.parameters.phone) {
+        return tc.parameters.phone as string;
+      }
+      if (tc.tool_name === "send_sms" && tc.parameters.phone_number) {
+        return tc.parameters.phone_number as string;
+      }
+    }
+  }
+
+  return null;
 }
 
 async function getCallerNumber(callId: string): Promise<string | null> {
